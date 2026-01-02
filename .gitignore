@@ -1,0 +1,34 @@
+# Dependencies
+/deps/
+
+# Build
+/_build/
+/cover/
+/doc/
+
+# Generated files
+*.beam
+*.ez
+beamlens-*.tar
+
+# Mix artifacts
+/.fetch
+erl_crash.dump
+
+# Test artifacts
+/tmp/
+
+# IDE
+.elixir_ls/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
