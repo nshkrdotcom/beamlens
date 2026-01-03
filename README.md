@@ -55,6 +55,17 @@ See the module documentation for detailed usage:
 - `Beamlens.Scheduler` - Cron scheduling details
 - `Beamlens.Telemetry` - Telemetry events
 
+### Attaching to all events
+
+```elixir
+:telemetry.attach_many(
+  "beamlens-logger",
+  Beamlens.Telemetry.event_names(),
+  &MyHandler.handle_event/4,
+  nil
+)
+```
+
 ## What it monitors
 
 BeamLens gathers safe, read-only VM metrics:

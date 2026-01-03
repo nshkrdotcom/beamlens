@@ -1,6 +1,22 @@
 defmodule Beamlens.HealthAnalysis do
   @moduledoc """
-  Structured health analysis from BeamLens agent.
+  Structured health analysis returned by the BeamLens agent.
+
+  ## Fields
+
+    * `:status` - Overall health status (`:healthy`, `:warning`, or `:critical`)
+    * `:summary` - Brief 1-2 sentence summary of findings
+    * `:concerns` - List of identified concerns (empty list if none)
+    * `:recommendations` - Actionable recommendations (empty list if none)
+
+  ## Example
+
+      %Beamlens.HealthAnalysis{
+        status: :warning,
+        summary: "Memory usage is elevated but within acceptable limits.",
+        concerns: ["Binary memory at 45% of total"],
+        recommendations: ["Monitor binary memory growth"]
+      }
   """
 
   @type status :: :healthy | :warning | :critical
@@ -13,6 +29,7 @@ defmodule Beamlens.HealthAnalysis do
         }
 
   @derive Jason.Encoder
+  @enforce_keys [:status, :summary]
   defstruct [:status, :summary, concerns: [], recommendations: []]
 
   @doc """
@@ -31,6 +48,10 @@ defmodule Beamlens.HealthAnalysis do
   defp parse_status("healthy"), do: {:ok, :healthy}
   defp parse_status("warning"), do: {:ok, :warning}
   defp parse_status("critical"), do: {:ok, :critical}
+
+  defp parse_status(invalid) do
+    {:error, "invalid status '#{invalid}', expected one of: healthy, warning, critical"}
+  end
 
   defp to_struct(map), do: {:ok, struct(__MODULE__, map)}
 end

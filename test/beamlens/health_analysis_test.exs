@@ -46,5 +46,27 @@ defmodule Beamlens.HealthAnalysisTest do
       assert length(analysis.concerns) == 2
       assert length(analysis.recommendations) == 2
     end
+
+    test "returns error for invalid status value" do
+      baml_output = %{
+        status: "unknown",
+        summary: "Test summary",
+        concerns: [],
+        recommendations: []
+      }
+
+      assert {:error, _reason} = Zoi.parse(HealthAnalysis.schema(), baml_output)
+    end
+
+    test "returns error for uppercase status value" do
+      baml_output = %{
+        status: "HEALTHY",
+        summary: "Test summary",
+        concerns: [],
+        recommendations: []
+      }
+
+      assert {:error, _reason} = Zoi.parse(HealthAnalysis.schema(), baml_output)
+    end
   end
 end

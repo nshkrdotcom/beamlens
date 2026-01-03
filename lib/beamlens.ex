@@ -108,7 +108,18 @@ defmodule Beamlens do
   @doc """
   Manually trigger a health analysis.
 
-  Returns `{:ok, analysis}` where analysis is the AI-generated health assessment.
+  Returns `{:ok, analysis}` on success, or `{:error, reason}` on failure.
+
+  ## Options
+
+  See `Beamlens.Agent.run/1` for available options.
+
+  ## Possible Errors
+
+    * `{:error, :max_iterations_exceeded}` - Agent did not complete within iteration limit
+    * `{:error, :timeout}` - LLM call timed out
+    * `{:error, {:unknown_tool, tool}}` - LLM returned unrecognized tool
+    * `{:error, {:encoding_failed, tool_name, reason}}` - Tool result could not be JSON-encoded
   """
   defdelegate run(opts \\ []), to: Beamlens.Agent
 

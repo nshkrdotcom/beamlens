@@ -83,7 +83,6 @@ defmodule Beamlens.Scheduler do
   @doc """
   Returns all schedules as sanitized maps.
   """
-  @spec list_schedules() :: [map()]
   def list_schedules do
     GenServer.call(__MODULE__, :list_schedules)
   end
@@ -91,7 +90,6 @@ defmodule Beamlens.Scheduler do
   @doc """
   Returns a specific schedule by name, or nil if not found.
   """
-  @spec get_schedule(atom()) :: map() | nil
   def get_schedule(name) do
     GenServer.call(__MODULE__, {:get_schedule, name})
   end
@@ -101,7 +99,6 @@ defmodule Beamlens.Scheduler do
 
   Returns `{:error, :already_running}` if the schedule is already executing.
   """
-  @spec run_now(atom()) :: :ok | {:error, :not_found | :already_running}
   def run_now(name) do
     GenServer.call(__MODULE__, {:run_now, name})
   end

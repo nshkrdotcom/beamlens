@@ -192,4 +192,53 @@ defmodule Beamlens.TelemetryTest do
       :telemetry.detach("test-exception-handler-#{inspect(ref)}")
     end
   end
+
+  describe "attach_default_logger/1" do
+    test "attaches handler to all event names" do
+      # Clean up any existing handler first
+      :telemetry.detach("beamlens-telemetry-default-logger")
+
+      assert :ok = Telemetry.attach_default_logger()
+
+      # Verify handler is attached by emitting an event and checking no crash
+      :telemetry.execute([:beamlens, :tool, :start], %{system_time: 123}, %{trace_id: "test"})
+
+      # Clean up
+      assert :ok = Telemetry.detach_default_logger()
+    end
+
+    test "returns error when already attached" do
+      :telemetry.detach("beamlens-telemetry-default-logger")
+
+      assert :ok = Telemetry.attach_default_logger()
+      assert {:error, :already_exists} = Telemetry.attach_default_logger()
+
+      # Clean up
+      Telemetry.detach_default_logger()
+    end
+
+    test "accepts custom log level" do
+      :telemetry.detach("beamlens-telemetry-default-logger")
+
+      assert :ok = Telemetry.attach_default_logger(level: :info)
+
+      # Clean up
+      Telemetry.detach_default_logger()
+    end
+  end
+
+  describe "detach_default_logger/0" do
+    test "detaches the handler" do
+      :telemetry.detach("beamlens-telemetry-default-logger")
+      Telemetry.attach_default_logger()
+
+      assert :ok = Telemetry.detach_default_logger()
+    end
+
+    test "returns error when not attached" do
+      :telemetry.detach("beamlens-telemetry-default-logger")
+
+      assert {:error, :not_found} = Telemetry.detach_default_logger()
+    end
+  end
 end

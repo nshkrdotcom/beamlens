@@ -168,13 +168,15 @@ defmodule Beamlens.SchedulerTest do
     end
 
     test "returns error when already running" do
-      # Use a run_fun that blocks
+      # Use a run_fun that blocks until signaled
       test_pid = self()
 
       run_fun = fn _opts ->
         send(test_pid, :started)
-        Process.sleep(5000)
-        {:ok, %{status: :healthy}}
+
+        receive do
+          :continue -> {:ok, %{status: :healthy}}
+        end
       end
 
       opts = [
@@ -217,8 +219,11 @@ defmodule Beamlens.SchedulerTest do
         # Trigger the crash
         assert :ok = Scheduler.run_now(:crasher)
 
-        # Give time for crash to propagate
-        Process.sleep(100)
+        # Wait for crash to clear running state (poll with :sys.get_state)
+        wait_until(fn ->
+          schedule = Scheduler.get_schedule(:crasher)
+          schedule.running? == false
+        end)
 
         # Scheduler should still be alive
         assert Process.alive?(pid)
@@ -229,6 +234,25 @@ defmodule Beamlens.SchedulerTest do
       after
         GenServer.stop(pid)
         Supervisor.stop(sup)
+      end
+    end
+  end
+
+  # Helper to wait for a condition without Process.sleep
+  defp wait_until(fun, timeout \\ 1000, interval \\ 10) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+    do_wait_until(fun, deadline, interval)
+  end
+
+  defp do_wait_until(fun, deadline, interval) do
+    if fun.() do
+      :ok
+    else
+      if System.monotonic_time(:millisecond) >= deadline do
+        raise "Timed out waiting for condition"
+      else
+        :timer.sleep(interval)
+        do_wait_until(fun, deadline, interval)
       end
     end
   end

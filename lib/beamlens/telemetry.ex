@@ -13,7 +13,7 @@ defmodule Beamlens.Telemetry do
   * `[:beamlens, :agent, :stop]` - Agent run completed
     - Measurements: `%{duration: integer}` (native units)
     - Metadata: `%{trace_id: String.t(), node: String.t(), status: atom(),
-                   analysis: HealthAnalysis.t(), tool_count: integer}`
+                   analysis: HealthAnalysis.t()}`
 
   * `[:beamlens, :agent, :exception]` - Agent run failed
     - Measurements: `%{duration: integer}`
@@ -92,7 +92,6 @@ defmodule Beamlens.Telemetry do
   @doc """
   Returns all telemetry event names that can be emitted.
   """
-  @spec event_names() :: [[atom()]]
   def event_names do
     [
       [:beamlens, :agent, :start],
@@ -114,7 +113,6 @@ defmodule Beamlens.Telemetry do
   @doc """
   Generates a unique trace ID for an agent run.
   """
-  @spec generate_trace_id() :: String.t()
   def generate_trace_id do
     :crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower)
   end
@@ -122,7 +120,6 @@ defmodule Beamlens.Telemetry do
   @doc """
   Executes a span for agent run with telemetry events.
   """
-  @spec span(map(), (-> {result, map(), map()})) :: result when result: term()
   def span(metadata, fun) do
     :telemetry.span([:beamlens, :agent], metadata, fun)
   end
@@ -132,7 +129,6 @@ defmodule Beamlens.Telemetry do
 
   Emits `:start`, `:stop`, and `:exception` events for the tool execution.
   """
-  @spec tool_span(map(), (-> result)) :: result when result: term()
   def tool_span(metadata, fun) do
     start_time = System.monotonic_time()
 
@@ -171,7 +167,6 @@ defmodule Beamlens.Telemetry do
 
   - `:level` - Log level to use (default: `:debug`)
   """
-  @spec attach_default_logger(keyword()) :: :ok | {:error, :already_exists}
   def attach_default_logger(opts \\ []) do
     level = Keyword.get(opts, :level, :debug)
 
@@ -186,7 +181,6 @@ defmodule Beamlens.Telemetry do
   @doc """
   Detaches the default logging handler.
   """
-  @spec detach_default_logger() :: :ok | {:error, :not_found}
   def detach_default_logger do
     :telemetry.detach("beamlens-telemetry-default-logger")
   end

@@ -1,6 +1,9 @@
 defmodule Beamlens.Agent do
   @moduledoc """
-  Strider-based agent that analyzes BEAM health using a tool-calling loop.
+  AI agent that analyzes BEAM health using a tool-calling loop.
+
+  Built on [Strider](https://github.com/bradleygolden/strider), an Elixir
+  library for composable LLM agent orchestration.
 
   Uses Claude Haiku via BAML to iteratively gather VM metrics and produce
   structured health assessments. The agent selects which tools to call
@@ -40,7 +43,10 @@ defmodule Beamlens.Agent do
 
   ## Options
 
-    * `:client_registry` - LLM client configuration (see example below)
+    * `:client_registry` - Full LLM client configuration map. When provided,
+      takes precedence and `:llm_client` is ignored. See example below.
+    * `:llm_client` - LLM client name string (e.g., "Ollama"). Only used
+      when `:client_registry` is not provided.
     * `:max_iterations` - Maximum tool calls before forcing completion (default: 10)
     * `:trace_id` - Correlation ID for telemetry (auto-generated if not provided)
     * `:timeout` - Timeout in milliseconds for each LLM call (default: 60000)
@@ -51,7 +57,10 @@ defmodule Beamlens.Agent do
       analysis.status
       #=> :healthy
 
-      # Custom LLM provider
+      # Use a different preconfigured client
+      {:ok, analysis} = Beamlens.Agent.run(llm_client: "Ollama")
+
+      # Custom LLM provider with full configuration
       {:ok, analysis} = Beamlens.Agent.run(
         client_registry: %{
           primary: "Bedrock",
@@ -140,9 +149,22 @@ defmodule Beamlens.Agent do
         Strider.call(agent, [], context, output_schema: Tools.schema())
       end)
 
-    case Task.yield(task, timeout) || Task.shutdown(task, :brutal_kill) do
-      {:ok, result} -> result
-      nil -> {:error, :timeout}
+    case Task.yield(task, timeout) do
+      {:ok, result} ->
+        result
+
+      nil ->
+        case Task.shutdown(task, :brutal_kill) do
+          {:ok, result} ->
+            Logger.debug("[BeamLens] LLM completed just before shutdown",
+              trace_id: context.metadata.trace_id
+            )
+
+            result
+
+          nil ->
+            {:error, :timeout}
+        end
     end
   end
 
@@ -249,13 +271,24 @@ defmodule Beamlens.Agent do
       trace_id: context.metadata.trace_id
     )
 
-    new_context =
-      context
-      |> add_tool_message(Jason.encode!(result), %{tool: tool_name})
-      |> increment_iteration()
-      |> increment_tool_count()
+    case Jason.encode(result) do
+      {:ok, encoded} ->
+        new_context =
+          context
+          |> add_tool_message(encoded, %{tool: tool_name})
+          |> increment_iteration()
+          |> increment_tool_count()
 
-    loop(agent, new_context, remaining, timeout)
+        loop(agent, new_context, remaining, timeout)
+
+      {:error, reason} ->
+        Logger.error("[BeamLens] Failed to encode tool result: #{inspect(reason)}",
+          trace_id: context.metadata.trace_id,
+          tool_name: tool_name
+        )
+
+        {:error, {:encoding_failed, tool_name, reason}}
+    end
   end
 
   defp add_tool_message(context, content, metadata) do

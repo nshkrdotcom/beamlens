@@ -39,7 +39,6 @@ defmodule Beamlens.Scheduler.Schedule do
     * `:cron` - (required) cron expression string
     * `:agent_opts` - (optional) agent options to merge with global opts
   """
-  @spec new(keyword()) :: {:ok, t()} | {:error, term()}
   def new(opts) do
     name = Keyword.fetch!(opts, :name)
     cron_string = Keyword.fetch!(opts, :cron)
@@ -67,7 +66,6 @@ defmodule Beamlens.Scheduler.Schedule do
 
   Accepts optional `now` parameter for testability.
   """
-  @spec compute_next_run(Crontab.CronExpression.t(), NaiveDateTime.t()) :: NaiveDateTime.t()
   def compute_next_run(cron, now \\ NaiveDateTime.utc_now()) do
     {:ok, next} = Scheduler.get_next_run_date(cron, now)
     next
@@ -82,7 +80,6 @@ defmodule Beamlens.Scheduler.Schedule do
   Returns `{ms, :exact | :clamped}` tuple. When the delay exceeds ~49 days,
   the value is clamped to the maximum safe timer value.
   """
-  @spec ms_until_next_run(t()) :: {non_neg_integer(), :exact | :clamped}
   def ms_until_next_run(%__MODULE__{next_run_at: next_run_at}) do
     now = NaiveDateTime.utc_now()
     diff_ms = NaiveDateTime.diff(next_run_at, now, :millisecond) |> max(0)
@@ -99,7 +96,6 @@ defmodule Beamlens.Scheduler.Schedule do
 
   Hides internal refs, exposes `running?` boolean.
   """
-  @spec to_public_map(t()) :: map()
   def to_public_map(%__MODULE__{} = s) do
     %{
       name: s.name,
