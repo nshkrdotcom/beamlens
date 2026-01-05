@@ -1,8 +1,8 @@
 # BeamLens
 
-**Your BEAM Expert, Always On**
+**You sleep. Your app doesn't. Neither does BeamLens.**
 
-An AI agent that runs alongside your Elixir app—observing your runtime, explaining what it sees, giving you context to investigate faster.
+Your application runs around the clock. You can't watch it around the clock. BeamLens bridges that gap—an AI agent that continuously monitors your application's health, surfacing issues whether you're in a meeting, asleep, or on vacation.
 
 ## The Problem
 
@@ -35,14 +35,6 @@ Investigate ETS table growth, potentially from cache or session storage."
 - **Supplements Your Stack** — Works alongside Prometheus, Datadog, AppSignal, Sentry—whatever you're already using.
 
 - **Bring Your Own Model** (Coming Soon) — Anthropic (available now), with OpenAI, AWS Bedrock, Google Gemini, Azure OpenAI, Ollama, and more coming in future releases.
-
-## Prerequisites
-
-**Rust toolchain** is required to compile `baml_elixir` from source (temporary requirement until precompiled NIFs are available):
-
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
 
 ## Installation
 
