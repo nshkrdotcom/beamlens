@@ -12,3 +12,7 @@ _.file = ".env"
 [tasks."baml:test"]
 description = "Run BAML tests"
 run = "baml-cli test --from priv/baml_src"
+
+[tasks."baml:optimize"]
+description = "Run BAML prompt optimizer"
+run = "baml-cli optimize --beta --function SelectTool --from priv/baml_src"
