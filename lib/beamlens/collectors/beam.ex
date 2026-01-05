@@ -17,37 +17,43 @@ defmodule Beamlens.Collectors.Beam do
         name: :system_info,
         intent: "get_system_info",
         description: "Get basic node context (always call first)",
-        execute: &system_info/0
+        execute: fn _params -> system_info() end
       },
       %Tool{
         name: :memory_stats,
         intent: "get_memory_stats",
         description: "Get detailed memory statistics for leak detection",
-        execute: &memory_stats/0
+        execute: fn _params -> memory_stats() end
       },
       %Tool{
         name: :process_stats,
         intent: "get_process_stats",
         description: "Get process/port counts and limits for capacity check",
-        execute: &process_stats/0
+        execute: fn _params -> process_stats() end
       },
       %Tool{
         name: :scheduler_stats,
         intent: "get_scheduler_stats",
         description: "Get scheduler details and run queues for performance analysis",
-        execute: &scheduler_stats/0
+        execute: fn _params -> scheduler_stats() end
       },
       %Tool{
         name: :atom_stats,
         intent: "get_atom_stats",
         description: "Get atom table metrics when suspecting atom leaks",
-        execute: &atom_stats/0
+        execute: fn _params -> atom_stats() end
       },
       %Tool{
         name: :persistent_terms,
         intent: "get_persistent_terms",
         description: "Get persistent term usage statistics",
-        execute: &persistent_terms/0
+        execute: fn _params -> persistent_terms() end
+      },
+      %Tool{
+        name: :top_processes,
+        intent: "get_top_processes",
+        description: "Get top processes sorted by memory/queue/reductions with pagination",
+        execute: &top_processes/1
       }
     ]
   end
@@ -121,4 +127,72 @@ defmodule Beamlens.Collectors.Beam do
     {wall_clock_ms, _} = :erlang.statistics(:wall_clock)
     div(wall_clock_ms, 1000)
   end
+
+  # Top processes with pagination (based on Phoenix LiveDashboard patterns)
+
+  @process_keys [
+    :memory,
+    :reductions,
+    :message_queue_len,
+    :current_function,
+    :registered_name,
+    :dictionary
+  ]
+
+  defp top_processes(params) do
+    limit = min(Map.get(params, :limit, 10), 50)
+    offset = Map.get(params, :offset, 0)
+    sort_by = normalize_sort_by(Map.get(params, :sort_by, "memory"))
+
+    processes =
+      Process.list()
+      |> Stream.map(&process_info/1)
+      |> Stream.reject(&is_nil/1)
+      |> Enum.sort_by(&Map.get(&1, sort_by), :desc)
+      |> Enum.drop(offset)
+      |> Enum.take(limit)
+
+    %{
+      total_processes: :erlang.system_info(:process_count),
+      showing: length(processes),
+      offset: offset,
+      limit: limit,
+      sort_by: to_string(sort_by),
+      processes: processes
+    }
+  end
+
+  defp process_info(pid) do
+    case Process.info(pid, @process_keys) do
+      nil ->
+        nil
+
+      info ->
+        %{
+          pid: inspect(pid),
+          name: process_name(info),
+          memory_kb: div(info[:memory], 1024),
+          message_queue: info[:message_queue_len],
+          reductions: info[:reductions],
+          current_function: format_mfa(info[:current_function])
+        }
+    end
+  end
+
+  defp process_name(info) do
+    cond do
+      info[:registered_name] -> inspect(info[:registered_name])
+      label = info[:dictionary][:"$process_label"] -> inspect(label)
+      initial = info[:dictionary][:"$initial_call"] -> format_mfa(initial)
+      true -> nil
+    end
+  end
+
+  defp normalize_sort_by("memory"), do: :memory_kb
+  defp normalize_sort_by("message_queue"), do: :message_queue
+  defp normalize_sort_by("reductions"), do: :reductions
+  defp normalize_sort_by(_), do: :memory_kb
+
+  defp format_mfa({m, f, a}), do: "#{inspect(m)}.#{f}/#{a}"
+  defp format_mfa(_), do: nil
 end

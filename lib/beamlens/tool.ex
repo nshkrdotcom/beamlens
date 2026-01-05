@@ -12,7 +12,7 @@ defmodule Beamlens.Tool do
         name: :pool_stats,
         intent: "get_pool_stats",
         description: "Get connection pool statistics",
-        execute: fn -> %{size: 10, available: 7} end
+        execute: fn _params -> %{size: 10, available: 7} end
       }
   """
 
@@ -20,7 +20,7 @@ defmodule Beamlens.Tool do
           name: atom(),
           intent: String.t(),
           description: String.t(),
-          execute: (-> map())
+          execute: (map() -> map())
         }
 
   @enforce_keys [:name, :intent, :description, :execute]

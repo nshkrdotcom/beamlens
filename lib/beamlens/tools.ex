@@ -36,6 +36,11 @@ defmodule Beamlens.Tools do
     defstruct [:intent]
   end
 
+  defmodule GetTopProcesses do
+    @moduledoc false
+    defstruct [:intent, :limit, :offset, :sort_by]
+  end
+
   defmodule Done do
     @moduledoc false
     defstruct [:intent, :analysis]
@@ -54,6 +59,7 @@ defmodule Beamlens.Tools do
       tool_schema(GetSchedulerStats, "get_scheduler_stats"),
       tool_schema(GetAtomStats, "get_atom_stats"),
       tool_schema(GetPersistentTerms, "get_persistent_terms"),
+      top_processes_schema(),
       done_schema()
     ])
   end
@@ -61,6 +67,16 @@ defmodule Beamlens.Tools do
   defp tool_schema(module, intent_value) do
     Zoi.object(%{intent: Zoi.literal(intent_value)})
     |> Zoi.transform(fn data -> {:ok, struct!(module, data)} end)
+  end
+
+  defp top_processes_schema do
+    Zoi.object(%{
+      intent: Zoi.literal("get_top_processes"),
+      limit: Zoi.integer() |> Zoi.optional(),
+      offset: Zoi.integer() |> Zoi.optional(),
+      sort_by: Zoi.enum(["memory", "message_queue", "reductions"]) |> Zoi.optional()
+    })
+    |> Zoi.transform(fn data -> {:ok, struct!(GetTopProcesses, data)} end)
   end
 
   defp done_schema do

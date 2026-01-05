@@ -248,10 +248,11 @@ defmodule Beamlens.Agent do
     {:ok, analysis_with_events}
   end
 
-  defp execute_tool(%{intent: intent}, client, context, remaining, timeout, tools) do
+  defp execute_tool(%{intent: intent} = response, client, context, remaining, timeout, tools) do
     case find_tool(intent, tools) do
       {:ok, tool} ->
-        execute_and_continue(client, context, tool, remaining, timeout, tools)
+        params = Map.drop(response, [:intent, :__struct__])
+        execute_and_continue(client, context, tool, params, remaining, timeout, tools)
 
       :error ->
         Logger.warning("[BeamLens] Unknown tool: #{intent}",
@@ -277,7 +278,7 @@ defmodule Beamlens.Agent do
     end
   end
 
-  defp execute_and_continue(client, context, tool, remaining, timeout, tools) do
+  defp execute_and_continue(client, context, tool, params, remaining, timeout, tools) do
     trace_metadata = %{
       trace_id: context.metadata.trace_id,
       iteration: context.metadata.iteration,
@@ -288,7 +289,7 @@ defmodule Beamlens.Agent do
     Telemetry.emit_tool_start(trace_metadata)
     start_time = System.monotonic_time()
 
-    result = tool.execute.()
+    result = tool.execute.(params)
 
     Logger.debug("[BeamLens] Tool #{tool.intent} returned: #{inspect(result)}",
       trace_id: context.metadata.trace_id

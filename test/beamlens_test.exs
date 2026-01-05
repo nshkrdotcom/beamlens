@@ -22,15 +22,15 @@ defmodule BeamlensTest do
   end
 
   describe "Beam collector tools/0" do
-    test "returns list of 6 Tool structs" do
+    test "returns list of 7 Tool structs" do
       tools = Beam.tools()
 
-      assert length(tools) == 6
+      assert length(tools) == 7
       assert Enum.all?(tools, &match?(%Tool{}, &1))
       assert Enum.all?(tools, &is_atom(&1.name))
       assert Enum.all?(tools, &is_binary(&1.intent))
       assert Enum.all?(tools, &is_binary(&1.description))
-      assert Enum.all?(tools, &is_function(&1.execute, 0))
+      assert Enum.all?(tools, &is_function(&1.execute, 1))
     end
 
     test "each tool has unique intent" do
@@ -48,7 +48,7 @@ defmodule BeamlensTest do
     end
 
     test "returns expected structure", %{tool: tool} do
-      info = tool.execute.()
+      info = tool.execute.(%{})
 
       assert is_binary(info.node)
       assert is_binary(info.otp_release)
@@ -59,8 +59,8 @@ defmodule BeamlensTest do
     end
 
     test "is read-only (no side effects)", %{tool: tool} do
-      i1 = tool.execute.()
-      i2 = tool.execute.()
+      i1 = tool.execute.(%{})
+      i2 = tool.execute.(%{})
 
       assert Map.keys(i1) == Map.keys(i2)
       assert i1.node == i2.node
@@ -73,7 +73,7 @@ defmodule BeamlensTest do
   describe "Beam collector - get_memory_stats tool" do
     test "returns expected structure" do
       tool = find_tool("get_memory_stats")
-      stats = tool.execute.()
+      stats = tool.execute.(%{})
 
       assert is_float(stats.total_mb)
       assert is_float(stats.processes_mb)
@@ -88,7 +88,7 @@ defmodule BeamlensTest do
   describe "Beam collector - get_process_stats tool" do
     test "returns expected structure" do
       tool = find_tool("get_process_stats")
-      stats = tool.execute.()
+      stats = tool.execute.(%{})
 
       assert is_integer(stats.process_count)
       assert is_integer(stats.process_limit)
@@ -102,7 +102,7 @@ defmodule BeamlensTest do
   describe "Beam collector - get_scheduler_stats tool" do
     test "returns expected structure" do
       tool = find_tool("get_scheduler_stats")
-      stats = tool.execute.()
+      stats = tool.execute.(%{})
 
       assert is_integer(stats.schedulers)
       assert is_integer(stats.schedulers_online)
@@ -116,7 +116,7 @@ defmodule BeamlensTest do
   describe "Beam collector - get_atom_stats tool" do
     test "returns expected structure" do
       tool = find_tool("get_atom_stats")
-      stats = tool.execute.()
+      stats = tool.execute.(%{})
 
       assert is_integer(stats.atom_count)
       assert is_integer(stats.atom_limit)
@@ -130,11 +130,72 @@ defmodule BeamlensTest do
   describe "Beam collector - get_persistent_terms tool" do
     test "returns expected structure" do
       tool = find_tool("get_persistent_terms")
-      stats = tool.execute.()
+      stats = tool.execute.(%{})
 
       assert is_integer(stats.count)
       assert is_float(stats.memory_mb)
       assert stats.count >= 0
+    end
+  end
+
+  describe "Beam collector - get_top_processes tool" do
+    test "returns expected structure with defaults" do
+      tool = find_tool("get_top_processes")
+      result = tool.execute.(%{})
+
+      assert is_integer(result.total_processes)
+      assert is_integer(result.showing)
+      assert result.offset == 0
+      assert result.limit == 10
+      assert result.sort_by == "memory_kb"
+      assert is_list(result.processes)
+      assert result.showing <= 10
+    end
+
+    test "respects limit parameter" do
+      tool = find_tool("get_top_processes")
+      result = tool.execute.(%{limit: 5})
+
+      assert result.limit == 5
+      assert result.showing <= 5
+    end
+
+    test "respects offset parameter" do
+      tool = find_tool("get_top_processes")
+      result = tool.execute.(%{offset: 5})
+
+      assert result.offset == 5
+    end
+
+    test "respects sort_by parameter" do
+      tool = find_tool("get_top_processes")
+
+      result = tool.execute.(%{sort_by: "reductions"})
+      assert result.sort_by == "reductions"
+
+      result = tool.execute.(%{sort_by: "message_queue"})
+      assert result.sort_by == "message_queue"
+    end
+
+    test "caps limit at 50" do
+      tool = find_tool("get_top_processes")
+      result = tool.execute.(%{limit: 100})
+
+      assert result.limit == 50
+    end
+
+    test "returns process info with expected fields" do
+      tool = find_tool("get_top_processes")
+      result = tool.execute.(%{limit: 1})
+
+      if result.showing > 0 do
+        [process | _] = result.processes
+
+        assert is_binary(process.pid)
+        assert is_integer(process.memory_kb)
+        assert is_integer(process.message_queue)
+        assert is_integer(process.reductions)
+      end
     end
   end
 

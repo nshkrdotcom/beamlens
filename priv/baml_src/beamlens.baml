@@ -50,6 +50,13 @@ class GetPersistentTerms {
   intent "get_persistent_terms" @description(#"Get persistent term usage statistics"#)
 }
 
+class GetTopProcesses {
+  intent "get_top_processes" @description(#"Drill into top processes by resource usage"#)
+  limit int @description(#"Max processes to return (1-50, default 10)"#)
+  offset int @description(#"Skip first N processes (default 0)"#)
+  sort_by "memory" | "message_queue" | "reductions" @description(#"Sort by memory, message_queue, or reductions"#)
+}
+
 class Done {
   intent "done"
   analysis HealthAnalysis @description(#"Final health analysis"#)
@@ -61,7 +68,7 @@ class Message {
 }
 
 // Union type - LLM picks exactly one tool
-function SelectTool(messages: Message[]) -> GetSystemInfo | GetMemoryStats | GetProcessStats | GetSchedulerStats | GetAtomStats | GetPersistentTerms | Done {
+function SelectTool(messages: Message[]) -> GetSystemInfo | GetMemoryStats | GetProcessStats | GetSchedulerStats | GetAtomStats | GetPersistentTerms | GetTopProcesses | Done {
   client Default
   prompt #"
 You are a BEAM VM health analyst. Analyze VM metrics and produce a health assessment.
@@ -75,6 +82,13 @@ You are a BEAM VM health analyst. Analyze VM metrics and produce a health assess
 - You have system info + at least 2 other metrics
 - You've identified a clear health status
 - Additional tools wouldn't change your assessment
+
+## Progressive Disclosure: get_top_processes
+Use get_top_processes when you need to identify specific resource-consuming processes:
+- Sort by "memory" to find memory hogs
+- Sort by "message_queue" to find backed-up processes
+- Sort by "reductions" to find CPU-heavy processes
+- Use limit/offset for pagination (e.g., limit=10, offset=10 for page 2)
 
 ## Metric Interpretation (IMPORTANT)
 - All memory values are in MB (megabytes), NOT GB or TB
@@ -573,6 +587,27 @@ test SelectTool_Anomaly_Memory80Percent {
   // processes_mb + system_mb = 8000/10000 = 80% > 60% threshold
   @@assert(warning_if_done, {{
     this.intent != "done" or this.analysis.status == "warning"
+  }})
+}
+
+// Verify get_top_processes is parsed correctly with parameters
+test SelectTool_GetTopProcesses_WithParams {
+  functions [SelectTool]
+  args {
+    messages [
+      { role "assistant", content #"{"intent":"get_system_info"}"# },
+      { role "tool", content #"{"node":"prod@host","otp_release":"28","elixir_version":"1.19.4","uptime_seconds":86400,"schedulers_online":8}"# },
+      { role "assistant", content #"{"intent":"get_process_stats"}"# },
+      { role "tool", content #"{"process_count":170000,"process_limit":262144,"port_count":200,"port_limit":65536}"# },
+      { role "assistant", content #"{"intent":"get_memory_stats"}"# },
+      { role "tool", content #"{"total_mb":8192.0,"processes_mb":4000.0,"processes_used_mb":3800.0,"system_mb":1500.0,"binary_mb":300.0,"ets_mb":200.0,"code_mb":200.0}"# }
+    ]
+  }
+  // Process count at 65% triggers warning - agent should investigate or complete with warning
+  @@assert(continues_or_warns, {{
+    this.intent == "get_scheduler_stats" or
+    this.intent == "get_top_processes" or
+    (this.intent == "done" and this.analysis.status == "warning")
   }})
 }
 
