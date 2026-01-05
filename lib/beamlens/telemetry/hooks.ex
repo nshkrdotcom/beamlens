@@ -1,14 +1,14 @@
 defmodule Beamlens.Telemetry.Hooks do
   @moduledoc """
-  Strider.Hooks implementation that emits BeamLens-specific telemetry events.
+  Puck.Hooks implementation that emits BeamLens-specific telemetry events.
 
-  This module bridges Strider's hook system with BeamLens telemetry,
+  This module bridges Puck's hook system with BeamLens telemetry,
   ensuring clients depend only on BeamLens telemetry events.
 
   ## Usage
 
   The hooks are automatically attached when using `Beamlens.Agent.run/1`.
-  Trace context is read from `Strider.Context.metadata`:
+  Trace context is read from `Puck.Context.metadata`:
 
       context = Context.new(metadata: %{
         trace_id: Beamlens.Telemetry.generate_trace_id(),
@@ -16,7 +16,7 @@ defmodule Beamlens.Telemetry.Hooks do
       })
   """
 
-  @behaviour Strider.Hooks
+  @behaviour Puck.Hooks
 
   @impl true
   def on_call_start(_agent, content, context) do

@@ -18,7 +18,7 @@ defmodule Beamlens.Telemetry.HooksTest do
         nil
       )
 
-      context = %Strider.Context{
+      context = %Puck.Context{
         messages: [%{role: :user}, %{role: :assistant}],
         metadata: %{trace_id: "trace-abc", iteration: 3}
       }
@@ -51,12 +51,12 @@ defmodule Beamlens.Telemetry.HooksTest do
         nil
       )
 
-      context = %Strider.Context{
+      context = %Puck.Context{
         messages: [],
         metadata: %{trace_id: "trace-xyz", iteration: 2}
       }
 
-      response = %Strider.Response{
+      response = %Puck.Response{
         content: %Tools.GetMemoryStats{intent: "checking memory for issues"}
       }
 
@@ -87,12 +87,12 @@ defmodule Beamlens.Telemetry.HooksTest do
         nil
       )
 
-      context = %Strider.Context{
+      context = %Puck.Context{
         messages: [],
         metadata: %{trace_id: "trace-nil", iteration: 0}
       }
 
-      response = %Strider.Response{
+      response = %Puck.Response{
         content: %Tools.GetSystemInfo{intent: nil}
       }
 
@@ -119,7 +119,7 @@ defmodule Beamlens.Telemetry.HooksTest do
         nil
       )
 
-      context = %Strider.Context{
+      context = %Puck.Context{
         messages: [],
         metadata: %{trace_id: "trace-err", iteration: 5}
       }

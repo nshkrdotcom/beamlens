@@ -22,7 +22,7 @@ defmodule Beamlens.MixProject do
 
   defp deps do
     [
-      {:strider, github: "bradleygolden/strider", ref: "28c077c"},
+      {:puck, "~> 0.1.0"},
       {:jason, "~> 1.4"},
       {:zoi, "~> 0.12"},
       # TODO: Switch back to hex.pm once ClientRegistry is released

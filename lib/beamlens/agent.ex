@@ -2,8 +2,8 @@ defmodule Beamlens.Agent do
   @moduledoc """
   AI agent that analyzes BEAM health using a tool-calling loop.
 
-  Built on [Strider](https://github.com/bradleygolden/strider), an Elixir
-  library for composable LLM agent orchestration.
+  Built on [Puck](https://github.com/bradleygolden/puck), an Elixir
+  framework for AI agents.
 
   Uses Claude Haiku via BAML to iteratively gather VM metrics and produce
   structured health assessments. The agent selects which tools to call
@@ -23,13 +23,13 @@ defmodule Beamlens.Agent do
   3. Executes the tool via its bundled execute function
   4. Repeats until agent selects `Done` with a HealthAnalysis
 
-  Uses `Strider.Agent` for LLM configuration and `Strider.Context` for
+  Uses `Puck.Client` for LLM configuration and `Puck.Context` for
   immutable conversation history management.
   """
 
   require Logger
 
-  alias Strider.Context
+  alias Puck.Context
   alias Beamlens.{Telemetry, Tools}
 
   @default_max_iterations 10
@@ -100,9 +100,9 @@ defmodule Beamlens.Agent do
       ]
       |> maybe_add_client_config(llm_client, client_registry)
 
-    agent =
-      Strider.Agent.new(
-        {Strider.Backends.Baml, backend_config},
+    client =
+      Puck.Client.new(
+        {Puck.Backends.Baml, backend_config},
         hooks: Beamlens.Telemetry.Hooks
       )
 
@@ -117,14 +117,14 @@ defmodule Beamlens.Agent do
         }
       )
 
-    loop(agent, context, max_iterations, timeout, tools)
+    loop(client, context, max_iterations, timeout, tools)
   end
 
   defp collect_tools(collectors) do
     Enum.flat_map(collectors, & &1.tools())
   end
 
-  defp loop(_agent, context, 0, _timeout, _tools) do
+  defp loop(_client, context, 0, _timeout, _tools) do
     Logger.warning("[BeamLens] Agent reached max iterations without completing",
       trace_id: context.metadata.trace_id
     )
@@ -132,14 +132,14 @@ defmodule Beamlens.Agent do
     {:error, :max_iterations_exceeded}
   end
 
-  defp loop(agent, context, remaining, timeout, tools) do
-    case call_with_timeout(agent, context, timeout) do
+  defp loop(client, context, remaining, timeout, tools) do
+    case call_with_timeout(client, context, timeout) do
       {:ok, response, new_context} ->
         Logger.debug("[BeamLens] Agent selected: #{inspect(response.content)}",
           trace_id: context.metadata.trace_id
         )
 
-        execute_tool(response.content, agent, new_context, remaining - 1, timeout, tools)
+        execute_tool(response.content, client, new_context, remaining - 1, timeout, tools)
 
       {:error, :timeout} ->
         Logger.warning("[BeamLens] LLM call timed out after #{timeout}ms",
@@ -157,10 +157,10 @@ defmodule Beamlens.Agent do
     end
   end
 
-  defp call_with_timeout(agent, context, timeout) do
+  defp call_with_timeout(client, context, timeout) do
     task =
       Task.async(fn ->
-        Strider.call(agent, [], context, output_schema: Tools.schema())
+        Puck.call(client, [], context, output_schema: Tools.schema())
       end)
 
     case Task.yield(task, timeout) do
@@ -184,7 +184,7 @@ defmodule Beamlens.Agent do
 
   defp execute_tool(
          %Tools.Done{analysis: analysis},
-         _agent,
+         _client,
          context,
          _remaining,
          _timeout,
@@ -198,10 +198,10 @@ defmodule Beamlens.Agent do
     {:ok, analysis}
   end
 
-  defp execute_tool(%{intent: intent}, agent, context, remaining, timeout, tools) do
+  defp execute_tool(%{intent: intent}, client, context, remaining, timeout, tools) do
     case find_tool(intent, tools) do
       {:ok, tool} ->
-        execute_and_continue(agent, context, tool, remaining, timeout, tools)
+        execute_and_continue(client, context, tool, remaining, timeout, tools)
 
       :error ->
         Logger.warning("[BeamLens] Unknown tool: #{intent}",
@@ -212,7 +212,7 @@ defmodule Beamlens.Agent do
     end
   end
 
-  defp execute_tool(unknown, _agent, context, _remaining, _timeout, _tools) do
+  defp execute_tool(unknown, _client, context, _remaining, _timeout, _tools) do
     Logger.warning("[BeamLens] Unknown tool response: #{inspect(unknown)}",
       trace_id: context.metadata.trace_id
     )
@@ -227,7 +227,7 @@ defmodule Beamlens.Agent do
     end
   end
 
-  defp execute_and_continue(agent, context, tool, remaining, timeout, tools) do
+  defp execute_and_continue(client, context, tool, remaining, timeout, tools) do
     trace_metadata = %{
       trace_id: context.metadata.trace_id,
       iteration: context.metadata.iteration,
@@ -253,7 +253,7 @@ defmodule Beamlens.Agent do
           |> increment_iteration()
           |> increment_tool_count()
 
-        loop(agent, new_context, remaining, timeout, tools)
+        loop(client, new_context, remaining, timeout, tools)
 
       {:error, reason} ->
         Telemetry.emit_tool_exception(trace_metadata, reason)
@@ -268,12 +268,7 @@ defmodule Beamlens.Agent do
   end
 
   defp add_tool_message(context, content, metadata) do
-    message = %Strider.Message{
-      role: :tool,
-      content: Strider.Content.wrap(content),
-      metadata: metadata
-    }
-
+    message = Puck.Message.new(:tool, content, metadata)
     %{context | messages: context.messages ++ [message]}
   end
 
