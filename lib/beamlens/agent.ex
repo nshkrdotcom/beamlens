@@ -30,6 +30,7 @@ defmodule Beamlens.Agent do
   require Logger
 
   alias Beamlens.{CircuitBreaker, Telemetry, Tools}
+  alias Beamlens.Events.{LLMCall, ToolCall}
   alias Puck.Context
 
   @default_max_iterations 10
@@ -112,7 +113,8 @@ defmodule Beamlens.Agent do
           started_at: DateTime.utc_now(),
           node: Node.self(),
           iteration: 0,
-          tool_count: 0
+          tool_count: 0,
+          events: []
         }
       )
 
@@ -138,7 +140,15 @@ defmodule Beamlens.Agent do
           trace_id: context.metadata.trace_id
         )
 
-        execute_tool(response.content, client, new_context, remaining - 1, timeout, tools)
+        llm_event = %LLMCall{
+          occurred_at: DateTime.utc_now(),
+          iteration: context.metadata.iteration,
+          tool_selected: response.content.intent
+        }
+
+        context_with_event = append_event(new_context, llm_event)
+
+        execute_tool(response.content, client, context_with_event, remaining - 1, timeout, tools)
 
       {:error, :timeout} ->
         Logger.warning("[BeamLens] LLM call timed out after #{timeout}ms",
@@ -228,12 +238,14 @@ defmodule Beamlens.Agent do
          _timeout,
          _tools
        ) do
+    analysis_with_events = %{analysis | events: context.metadata.events}
+
     Logger.info("[BeamLens] Agent completed with status: #{analysis.status}",
       trace_id: context.metadata.trace_id,
       tool_count: context.metadata.tool_count
     )
 
-    {:ok, analysis}
+    {:ok, analysis_with_events}
   end
 
   defp execute_tool(%{intent: intent}, client, context, remaining, timeout, tools) do
@@ -274,6 +286,7 @@ defmodule Beamlens.Agent do
     }
 
     Telemetry.emit_tool_start(trace_metadata)
+    start_time = System.monotonic_time()
 
     result = tool.execute.()
 
@@ -283,10 +296,17 @@ defmodule Beamlens.Agent do
 
     case Jason.encode(result) do
       {:ok, encoded} ->
-        Telemetry.emit_tool_stop(trace_metadata)
+        Telemetry.emit_tool_stop(trace_metadata, result, start_time)
+
+        tool_event = %ToolCall{
+          intent: tool.intent,
+          occurred_at: DateTime.utc_now(),
+          result: result
+        }
 
         new_context =
           context
+          |> append_event(tool_event)
           |> add_tool_message(encoded, %{tool: tool.intent})
           |> increment_iteration()
           |> increment_tool_count()
@@ -316,6 +336,10 @@ defmodule Beamlens.Agent do
 
   defp increment_tool_count(context) do
     put_in(context.metadata.tool_count, context.metadata.tool_count + 1)
+  end
+
+  defp append_event(context, event) do
+    update_in(context.metadata.events, &(&1 ++ [event]))
   end
 
   defp default_collectors do

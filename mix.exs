@@ -81,7 +81,7 @@ defmodule Beamlens.MixProject do
   defp docs do
     [
       main: "readme",
-      extras: ["README.md", "LICENSE"],
+      extras: ["README.md", "CHANGELOG.md", "LICENSE"],
       source_ref: "v#{@version}",
       formatters: ["html"],
       authors: ["Bradley Golden"],
@@ -90,6 +90,11 @@ defmodule Beamlens.MixProject do
           Beamlens,
           Beamlens.Agent,
           Beamlens.HealthAnalysis
+        ],
+        Events: [
+          Beamlens.Events,
+          Beamlens.Events.LLMCall,
+          Beamlens.Events.ToolCall
         ],
         Scheduling: [
           Beamlens.Scheduler,

@@ -8,6 +8,8 @@ defmodule Beamlens.HealthAnalysis do
     * `:summary` - Brief 1-2 sentence summary of findings
     * `:concerns` - List of identified concerns (empty list if none)
     * `:recommendations` - Actionable recommendations (empty list if none)
+    * `:events` - Ordered list of events that occurred during analysis,
+      providing data provenance for verification
 
   ## Example
 
@@ -15,9 +17,16 @@ defmodule Beamlens.HealthAnalysis do
         status: :warning,
         summary: "Memory usage is elevated but within acceptable limits.",
         concerns: ["Binary memory at 45% of total"],
-        recommendations: ["Monitor binary memory growth"]
+        recommendations: ["Monitor binary memory growth"],
+        events: [
+          %Beamlens.Events.LLMCall{occurred_at: ~U[...], iteration: 0, tool_selected: "get_system_info"},
+          %Beamlens.Events.ToolCall{intent: "get_system_info", occurred_at: ~U[...], result: %{...}},
+          %Beamlens.Events.LLMCall{occurred_at: ~U[...], iteration: 1, tool_selected: "done"}
+        ]
       }
   """
+
+  alias Beamlens.Events
 
   @type status :: :healthy | :warning | :critical
 
@@ -25,12 +34,13 @@ defmodule Beamlens.HealthAnalysis do
           status: status(),
           summary: String.t(),
           concerns: [String.t()],
-          recommendations: [String.t()]
+          recommendations: [String.t()],
+          events: [Events.t()]
         }
 
   @derive Jason.Encoder
   @enforce_keys [:status, :summary]
-  defstruct [:status, :summary, concerns: [], recommendations: []]
+  defstruct [:status, :summary, concerns: [], recommendations: [], events: []]
 
   @doc """
   Returns the ZOI schema for parsing BAML output into this struct.

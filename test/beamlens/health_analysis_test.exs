@@ -69,4 +69,64 @@ defmodule Beamlens.HealthAnalysisTest do
       assert {:error, _reason} = Zoi.parse(HealthAnalysis.schema(), baml_output)
     end
   end
+
+  describe "struct" do
+    test "creates with events field defaulting to empty list" do
+      analysis = %HealthAnalysis{
+        status: :healthy,
+        summary: "All good"
+      }
+
+      assert analysis.events == []
+    end
+
+    test "creates with events" do
+      now = DateTime.utc_now()
+
+      events = [
+        %Beamlens.Events.LLMCall{
+          occurred_at: now,
+          iteration: 0,
+          tool_selected: "get_system_info"
+        },
+        %Beamlens.Events.ToolCall{
+          intent: "get_system_info",
+          occurred_at: now,
+          result: %{node: "test@host"}
+        }
+      ]
+
+      analysis = %HealthAnalysis{
+        status: :healthy,
+        summary: "All good",
+        events: events
+      }
+
+      assert length(analysis.events) == 2
+    end
+  end
+
+  describe "JSON encoding" do
+    test "encodes analysis with events to JSON" do
+      now = DateTime.utc_now()
+
+      analysis = %HealthAnalysis{
+        status: :warning,
+        summary: "Memory elevated",
+        concerns: ["High memory"],
+        recommendations: ["Monitor"],
+        events: [
+          %Beamlens.Events.LLMCall{
+            occurred_at: now,
+            iteration: 0,
+            tool_selected: "get_memory_stats"
+          }
+        ]
+      }
+
+      assert {:ok, json} = Jason.encode(analysis)
+      assert json =~ "warning"
+      assert json =~ "get_memory_stats"
+    end
+  end
 end

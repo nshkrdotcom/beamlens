@@ -195,6 +195,52 @@ defmodule Beamlens.TelemetryTest do
     end
   end
 
+  describe "emit_tool_start/1 and emit_tool_stop/3" do
+    test "emits start and stop events with result and duration" do
+      ref = make_ref()
+      test_pid = self()
+
+      :telemetry.attach_many(
+        "test-emit-tool-handler-#{inspect(ref)}",
+        [
+          [:beamlens, :tool, :start],
+          [:beamlens, :tool, :stop]
+        ],
+        fn event, measurements, metadata, _config ->
+          send(test_pid, {:telemetry, event, measurements, metadata})
+        end,
+        nil
+      )
+
+      metadata = %{
+        trace_id: "test-trace-emit",
+        iteration: 0,
+        tool_name: "get_system_info",
+        intent: "get_system_info"
+      }
+
+      Telemetry.emit_tool_start(metadata)
+      start_time = System.monotonic_time()
+
+      result = %{node: "test@host", uptime_seconds: 3600}
+
+      Telemetry.emit_tool_stop(metadata, result, start_time)
+
+      assert_receive {:telemetry, [:beamlens, :tool, :start], start_measurements, start_metadata}
+      assert is_integer(start_measurements.system_time)
+      assert start_metadata.trace_id == "test-trace-emit"
+      assert start_metadata.tool_name == "get_system_info"
+
+      assert_receive {:telemetry, [:beamlens, :tool, :stop], stop_measurements, stop_metadata}
+      assert is_integer(stop_measurements.duration)
+      assert stop_metadata.trace_id == "test-trace-emit"
+      assert stop_metadata.result == result
+      assert stop_metadata.result.node == "test@host"
+
+      :telemetry.detach("test-emit-tool-handler-#{inspect(ref)}")
+    end
+  end
+
   describe "attach_default_logger/1" do
     test "attaches handler to all event names" do
       # Clean up any existing handler first

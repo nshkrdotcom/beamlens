@@ -42,11 +42,12 @@ defmodule Beamlens.Telemetry do
                    tool_name: String.t(), intent: String.t()}`
 
   * `[:beamlens, :tool, :stop]` - Tool execution completed
-    - Measurements: `%{duration: integer}`
-    - Metadata: `%{trace_id: String.t(), iteration: integer, tool_name: String.t()}`
+    - Measurements: `%{duration: integer}` (native time units)
+    - Metadata: `%{trace_id: String.t(), iteration: integer,
+                   tool_name: String.t(), intent: String.t(), result: map()}`
 
   * `[:beamlens, :tool, :exception]` - Tool execution failed
-    - Measurements: `%{duration: integer}`
+    - Measurements: `%{system_time: integer}`
     - Metadata: `%{trace_id: String.t(), iteration: integer,
                    tool_name: String.t(), error: term()}`
 
@@ -174,13 +175,15 @@ defmodule Beamlens.Telemetry do
   end
 
   @doc """
-  Emits a tool stop event.
+  Emits a tool stop event with the tool result and duration.
+
+  `start_time` should be captured via `System.monotonic_time()` before tool execution.
   """
-  def emit_tool_stop(metadata) do
+  def emit_tool_stop(metadata, result, start_time) do
     :telemetry.execute(
       [:beamlens, :tool, :stop],
-      %{system_time: System.system_time()},
-      metadata
+      %{duration: System.monotonic_time() - start_time},
+      Map.put(metadata, :result, result)
     )
   end
 
