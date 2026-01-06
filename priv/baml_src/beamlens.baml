@@ -15,6 +15,7 @@ class HealthAnalysis {
     @check(not_too_long, {{ this|length < 500 }})
   concerns string[] @description(#"List of concerns found. MUST be empty for healthy status."#)
   recommendations string[] @description(#"Actionable recommendations. Keep minimal or empty for healthy status."#)
+  reasoning string @description(#"Brief explanation of how you arrived at this assessment"#)
   @@assert(concerns_match_status, {{
     (this.status == "healthy" and this.concerns|length == 0) or
     this.status != "healthy"
@@ -75,111 +76,43 @@ class Message {
 function SelectTool(messages: Message[]) -> GetOverview | GetSystemInfo | GetMemoryStats | GetProcessStats | GetSchedulerStats | GetAtomStats | GetPersistentTerms | GetTopProcesses | Done {
   client Default
   prompt #"
-You are a BEAM VM health analyst. Analyze VM metrics and produce a health assessment.
+You are a BEAM VM health analyst. The first message contains a complete snapshot of all VM metrics.
 
-## Analysis Process
-1. Start with get_overview to see utilization percentages across all categories
-2. Investigate any category showing elevated utilization (>=60%)
-3. Use get_system_info if you need node context (OTP version, uptime)
-4. Complete with "done" once you have sufficient data
+## SNAPSHOT-FIRST ANALYSIS
+The snapshot includes:
+- system_info: Node identity, OTP version, uptime, schedulers
+- memory_stats: Detailed memory breakdown (total_mb, processes_mb, system_mb, binary_mb, ets_mb, code_mb)
+- process_stats: Process/port counts and limits
+- scheduler_stats: Scheduler details and run_queue
+- atom_stats: Atom table metrics
+- persistent_terms: Persistent term usage
+- overview: Pre-calculated utilization percentages
+- top_processes: Top 10 processes by memory
 
-## When to Complete
-- You have overview + at least 1-2 detailed metrics for any elevated categories
-- You've identified a clear health status
-- Additional tools wouldn't change your assessment
+## DECISION THRESHOLDS
+- Any utilization >= 85% → CRITICAL
+- Any utilization >= 60% → WARNING
+- run_queue > schedulers_online * 10 → WARNING (scheduler contention)
+- binary_mb / total_mb > 25% → WARNING (potential binary leak)
+- Otherwise → HEALTHY
 
-## Overview Interpretation
-The get_overview tool returns pre-calculated percentages:
-- memory_utilization_pct: (processes + system) / total memory
-- process_utilization_pct: process_count / process_limit
-- port_utilization_pct: port_count / port_limit
-- atom_utilization_pct: atom_count / atom_limit
-- scheduler_run_queue: current run queue depth
-- schedulers_online: number of active schedulers
+## WHEN TO RETURN DONE (PREFERRED)
+Return Done immediately if:
+- The snapshot provides all information needed for assessment
+- No anomalies require deeper investigation
+- You can determine health status from the data provided
 
-Use these to quickly identify which categories need deeper investigation:
-- Any utilization >= 85% → CRITICAL, investigate immediately
-- Any utilization >= 60% → WARNING, get detailed stats
-- run_queue > schedulers_online * 10 → scheduler contention
+## WHEN TO CALL ADDITIONAL TOOLS (RARE)
+Only call tools if you need:
+- get_top_processes with different sorting (message_queue, reductions)
+- Pagination to see more than the initial 10 processes
 
-## Progressive Disclosure: get_top_processes
-Use get_top_processes when you need to identify specific resource-consuming processes:
-- Sort by "memory" to find memory hogs
-- Sort by "message_queue" to find backed-up processes
-- Sort by "reductions" to find CPU-heavy processes
-- Use limit/offset for pagination (e.g., limit=10, offset=10 for page 2)
+## OUTPUT GUIDELINES
+- healthy: Concerns = [], Recommendations = [] or at most one minor suggestion
+- warning: List specific concerns with percentages
+- critical: State urgent issues with exact numbers
 
-## Metric Interpretation (IMPORTANT)
-- All memory values are in MB (megabytes), NOT GB or TB
-- Calculate percentages explicitly before making assessments:
-  - Process capacity = process_count / process_limit * 100
-  - Port capacity = port_count / port_limit * 100
-  - Atom capacity = atom_count / atom_limit * 100
-  - Memory utilization = (processes_mb + system_mb) / total_mb * 100
-    e.g.: processes_mb=6000 + system_mb=2000 = 8000 / 10000 total = 80%
-    Note: total_mb is the denominator, NOT the sum
-
-## DECISION PROTOCOL (FOLLOW EXACTLY)
-Before outputting status, you MUST check these in order:
-
-STEP 1 - Check for CRITICAL (any one triggers critical):
-- process_count / process_limit >= 85%?
-- port_count / port_limit >= 85%?
-- atom_count / atom_limit >= 85%?
-- (processes_mb + system_mb) / total_mb >= 85%?
-=> If ANY is true: status = "critical"
-
-STEP 2 - Check for WARNING (any one triggers warning):
-- process_count / process_limit >= 60%? (e.g., 70% = WARNING)
-- port_count / port_limit >= 60%?
-- atom_count / atom_limit >= 60%?
-- (processes_mb + system_mb) / total_mb >= 60%? (e.g., 80% = WARNING)
-- binary_mb / total_mb > 25%?
-- run_queue > schedulers_online * 10? << IMPORTANT: scheduler contention!
-  (e.g., run_queue=120, schedulers=8: 120 > 80 = contention, list as PRIMARY concern)
-=> If ANY is true: status = "warning"
-
-STEP 3 - Otherwise:
-=> status = "healthy"
-
-CRITICAL RULE: 60% and above is NOT healthy. 70% is WARNING. 80% is WARNING.
-
-## Additional Anomaly Checks (note these in concerns if present)
-- Process heap pressure: processes_used_mb / processes_mb > 90%?
-- Memory imbalance: any category (binary_mb, ets_mb) > 40% of total_mb?
-
-## Output Guidelines
-- healthy: Summary confirms good state. Concerns = []. Recommendations = [] or at most one minor suggestion.
-- warning: Identify specific concerns with calculated percentages. Provide actionable recommendations.
-- critical: Clearly state the urgent issue with exact numbers. Prioritize immediate actions.
-
-## Example Assessments
-
-Example 1 - Healthy (process_count=5000, process_limit=262144, run_queue=2):
--> 5000/262144 = 1.9%, run_queue 2 < schedulers*10 - all good
--> Status: healthy, Concerns: [], Recommendations: []
-
-Example 2 - Warning by process capacity (process_count=183500, process_limit=262144):
--> 183500/262144 = 70% - in warning range (60-84%)
--> Status: warning, Concerns: ["Process count at 70% of limit"]
-
-Example 3 - Warning by memory utilization (processes_mb=6000, system_mb=2000, total_mb=10000):
--> Memory = (6000 + 2000) / 10000 = 80% - in warning range (60-84%)
--> Status: warning (NOT healthy!), Concerns: ["Memory utilization elevated at 80%"]
-
-Example 4 - Warning by scheduler contention (run_queue=120, schedulers_online=8, memory=68%):
--> run_queue 120 > schedulers*10 (80) = SCHEDULER CONTENTION (priority concern!)
--> Memory at 68% is secondary - scheduler contention is the PRIMARY issue
--> Status: warning, Concerns: ["Scheduler contention: run_queue 120 >> schedulers*10 threshold (80)"]
--> Note: Even if memory looks okay, high run_queue indicates serious CPU bottleneck
-
-Example 5 - Warning by binary leak (binary_mb=4500, total_mb=15000):
--> binary_mb/total_mb = 30% > 25% threshold = binary leak concern
--> Status: warning, Concerns: ["Binary memory elevated at 30% - potential leak"]
-
-Example 6 - Critical (process_count=235500, process_limit=262144):
--> 235500/262144 = 89.8% ~ 90% - at critical threshold (>=85%)
--> Status: critical, Concerns: ["Process exhaustion imminent at 90% of limit"]
+Include your reasoning in the analysis.reasoning field.
 
 ## Conversation
 {% for msg in messages %}
@@ -315,21 +248,14 @@ This is a retry. Focus on whether prior feedback was addressed.
 
 // Phase 1: Minimum Viable Tests
 
-test SelectTool_InitialSelection {
+test SelectTool_WithSnapshot_Healthy {
   functions [SelectTool]
   args {
-    messages []
+    messages [
+      { role "tool", content #"{"system_info":{"node":"prod@host","otp_release":"28","elixir_version":"1.19.4","uptime_seconds":3600,"schedulers_online":8},"memory_stats":{"total_mb":512,"processes_mb":100,"processes_used_mb":90,"system_mb":200,"binary_mb":50,"ets_mb":20,"code_mb":40},"process_stats":{"process_count":500,"process_limit":262144,"port_count":50,"port_limit":65536},"scheduler_stats":{"schedulers":8,"schedulers_online":8,"dirty_cpu_schedulers_online":8,"dirty_io_schedulers":10,"run_queue":0},"atom_stats":{"atom_count":25000,"atom_limit":2097152,"atom_mb":2.5,"atom_used_mb":2.3},"persistent_terms":{"count":10,"memory_mb":0.5},"overview":{"memory_utilization_pct":58.6,"process_utilization_pct":0.19,"port_utilization_pct":0.08,"atom_utilization_pct":1.2,"scheduler_run_queue":0,"schedulers_online":8},"top_processes":{"total_processes":500,"showing":10,"offset":0,"limit":10,"sort_by":"memory_kb","processes":[]}}"# }
+    ]
   }
-  @@assert(returns_tool, {{ this.intent != "done" }})
-  @@assert(valid_intent, {{
-    this.intent == "get_overview" or
-    this.intent == "get_system_info" or
-    this.intent == "get_memory_stats" or
-    this.intent == "get_process_stats" or
-    this.intent == "get_scheduler_stats" or
-    this.intent == "get_atom_stats" or
-    this.intent == "get_persistent_terms"
-  }})
+  @@assert(returns_done_healthy, {{ this.intent == "done" and this.analysis.status == "healthy" }})
 }
 
 test SelectTool_AfterSystemInfo {
@@ -896,28 +822,6 @@ test SelectTool_AfterOverviewHighMemory {
     ]
   }
   @@assert(investigates_memory, {{ this.intent == "get_memory_stats" }})
-}
-
-test SelectTool_AfterOverviewHighProcess {
-  functions [SelectTool]
-  args {
-    messages [
-      { role "assistant", content #"{"intent":"get_overview"}"# },
-      { role "tool", content #"{"memory_utilization_pct":40.0,"process_utilization_pct":70.0,"port_utilization_pct":0.1,"atom_utilization_pct":10.0,"scheduler_run_queue":0,"schedulers_online":8}"# }
-    ]
-  }
-  @@assert(investigates_processes, {{ this.intent == "get_process_stats" or this.intent == "get_top_processes" }})
-}
-
-test SelectTool_AfterOverviewSchedulerContention {
-  functions [SelectTool]
-  args {
-    messages [
-      { role "assistant", content #"{"intent":"get_overview"}"# },
-      { role "tool", content #"{"memory_utilization_pct":45.0,"process_utilization_pct":5.0,"port_utilization_pct":0.1,"atom_utilization_pct":10.0,"scheduler_run_queue":120,"schedulers_online":8}"# }
-    ]
-  }
-  @@assert(investigates_schedulers, {{ this.intent == "get_scheduler_stats" }})
 }
 
 test SelectTool_AfterOverviewHealthy {

@@ -97,6 +97,7 @@ The `HealthAnalysis` struct contains:
 | `summary` | `String.t()` | Brief 1-2 sentence summary |
 | `concerns` | `[String.t()]` | List of identified concerns |
 | `recommendations` | `[String.t()]` | Actionable next steps |
+| `reasoning` | `String.t() \| nil` | Explanation of how the assessment was reached |
 | `events` | `[Events.t()]` | Execution trace (LLM calls, tool calls, judge reviews) |
 
 ### Quality Verification

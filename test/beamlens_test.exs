@@ -41,6 +41,43 @@ defmodule BeamlensTest do
     end
   end
 
+  describe "Beam collector - snapshot/0" do
+    test "returns all metric categories" do
+      snapshot = Beam.snapshot()
+
+      assert Map.has_key?(snapshot, :system_info)
+      assert Map.has_key?(snapshot, :memory_stats)
+      assert Map.has_key?(snapshot, :process_stats)
+      assert Map.has_key?(snapshot, :scheduler_stats)
+      assert Map.has_key?(snapshot, :atom_stats)
+      assert Map.has_key?(snapshot, :persistent_terms)
+      assert Map.has_key?(snapshot, :overview)
+      assert Map.has_key?(snapshot, :top_processes)
+    end
+
+    test "top_processes contains up to 10 processes" do
+      snapshot = Beam.snapshot()
+
+      assert is_list(snapshot.top_processes.processes)
+      assert snapshot.top_processes.limit == 10
+    end
+
+    test "overview contains pre-calculated percentages" do
+      snapshot = Beam.snapshot()
+
+      assert is_float(snapshot.overview.memory_utilization_pct)
+      assert is_float(snapshot.overview.process_utilization_pct)
+      assert is_integer(snapshot.overview.scheduler_run_queue)
+    end
+
+    test "encodes to JSON without error" do
+      snapshot = Beam.snapshot()
+
+      assert {:ok, json} = Jason.encode(snapshot)
+      assert is_binary(json)
+    end
+  end
+
   describe "Beam collector - get_overview tool" do
     setup do
       tool = find_tool("get_overview")

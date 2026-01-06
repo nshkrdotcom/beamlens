@@ -30,6 +30,7 @@ defmodule Beamlens.Agent do
   require Logger
 
   alias Beamlens.{CircuitBreaker, Judge, Telemetry, Tools}
+  alias Beamlens.Collectors.Beam
   alias Beamlens.Events.{LLMCall, ToolCall}
   alias Puck.Context
 
@@ -115,6 +116,16 @@ defmodule Beamlens.Agent do
 
     tools = collect_tools(collectors)
 
+    # Collect snapshot first - provides all metrics upfront
+    snapshot = Beam.snapshot()
+    snapshot_json = Jason.encode!(snapshot)
+
+    snapshot_event = %ToolCall{
+      intent: "snapshot",
+      occurred_at: DateTime.utc_now(),
+      result: snapshot
+    }
+
     backend_config =
       %{
         function: "SelectTool",
@@ -129,12 +140,14 @@ defmodule Beamlens.Agent do
         hooks: Beamlens.Telemetry.Hooks
       )
 
+    # Build initial messages with snapshot first
     initial_messages =
-      if initial_context do
-        [Puck.Message.new(:user, initial_context, %{judge_feedback: true})]
-      else
-        []
-      end
+      [Puck.Message.new(:user, snapshot_json, %{tool: "snapshot"})] ++
+        if initial_context do
+          [Puck.Message.new(:user, initial_context, %{judge_feedback: true})]
+        else
+          []
+        end
 
     context =
       Context.new(
@@ -144,8 +157,8 @@ defmodule Beamlens.Agent do
           started_at: DateTime.utc_now(),
           node: Node.self(),
           iteration: 0,
-          tool_count: 0,
-          events: []
+          tool_count: 1,
+          events: [snapshot_event]
         }
       )
 

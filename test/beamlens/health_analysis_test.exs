@@ -47,6 +47,33 @@ defmodule Beamlens.HealthAnalysisTest do
       assert length(analysis.recommendations) == 2
     end
 
+    test "parses analysis with reasoning field" do
+      baml_output = %{
+        status: "warning",
+        summary: "Memory elevated at 70%",
+        concerns: ["High memory usage"],
+        recommendations: ["Monitor memory"],
+        reasoning: "Memory utilization is above 60% threshold but below critical 85%."
+      }
+
+      assert {:ok, analysis} = Zoi.parse(HealthAnalysis.schema(), baml_output)
+
+      assert analysis.reasoning ==
+               "Memory utilization is above 60% threshold but below critical 85%."
+    end
+
+    test "reasoning field is optional" do
+      baml_output = %{
+        status: "healthy",
+        summary: "All metrics nominal",
+        concerns: [],
+        recommendations: []
+      }
+
+      assert {:ok, analysis} = Zoi.parse(HealthAnalysis.schema(), baml_output)
+      assert analysis.reasoning == nil
+    end
+
     test "returns error for invalid status value" do
       baml_output = %{
         status: "unknown",

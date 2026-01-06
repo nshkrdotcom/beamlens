@@ -10,6 +10,24 @@ defmodule Beamlens.Collectors.Beam do
 
   alias Beamlens.Tool
 
+  @doc """
+  Collects all BEAM metrics in a single call for snapshot-first analysis.
+
+  Returns a map containing all metric categories plus top 10 processes by memory.
+  """
+  def snapshot do
+    %{
+      system_info: system_info(),
+      memory_stats: memory_stats(),
+      process_stats: process_stats(),
+      scheduler_stats: scheduler_stats(),
+      atom_stats: atom_stats(),
+      persistent_terms: persistent_terms(),
+      overview: overview(),
+      top_processes: top_processes(%{limit: 10, sort_by: "memory"})
+    }
+  end
+
   @impl true
   def tools do
     [
