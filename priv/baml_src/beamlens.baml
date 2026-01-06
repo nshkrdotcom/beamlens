@@ -89,12 +89,12 @@ The snapshot includes:
 - overview: Pre-calculated utilization percentages
 - top_processes: Top 10 processes by memory
 
-## DECISION THRESHOLDS
-- Any utilization >= 85% → CRITICAL
-- Any utilization >= 60% → WARNING
-- run_queue > schedulers_online * 10 → WARNING (scheduler contention)
-- binary_mb / total_mb > 25% → WARNING (potential binary leak)
-- Otherwise → HEALTHY
+## ANALYSIS APPROACH
+Use your judgment to assess VM health based on the metrics. Consider:
+- Resource utilization levels and how they relate to limits
+- Run queue depth relative to available schedulers
+- Memory distribution across categories (processes, binary, ETS)
+- Any unusual patterns or concerning trends
 
 ## WHEN TO RETURN DONE (PREFERRED)
 Return Done immediately if:
@@ -163,39 +163,26 @@ function JudgeAnalysis(
 You are a quality reviewer for BEAM VM health analyses. Your job is to verify that
 the analysis conclusions are supported by the collected data.
 
-## CRITICAL: Memory Threshold Calculation
+## Evaluation Criteria
 
-You MUST calculate memory utilization from the event trail data:
-memory_utilization = (processes_mb + system_mb) / total_mb × 100
-
-Thresholds:
-- Below 60% → "healthy" status with NO memory concerns
-- 60% to 84% → "warning" status with memory concern REQUIRED
-- 85%+ → "critical" status with memory concern REQUIRED
-
-## Decision Rules (Follow Strictly)
-
-### Rule 1: Data Sufficiency
-- Minimum required: system_info + 2 other metrics
+### 1. Data Sufficiency
+- The analysis should be based on sufficient metrics
+- At minimum: system_info + 2 other metric categories
 - If NOT met → verdict: "retry"
 
-### Rule 2: Memory-Status Match (MOST IMPORTANT)
-- Calculate: memory_utilization = (processes_mb + system_mb) / total_mb × 100
-- If memory >= 60% AND status is "healthy" with no memory concerns → verdict: "retry" (MISSED CONCERN)
-- If memory >= 60% AND status is "warning" or "critical" with memory concern → verdict: "accept"
-- If memory < 60% AND status is "healthy" with no concerns → verdict: "accept"
+### 2. Status-Data Consistency
+- The status should reflect the collected metrics
+- "healthy" status should have no significant resource concerns
+- "warning" or "critical" should identify the specific concerns with data backing
 
-### Rule 3: Status-Concern Consistency
+### 3. Status-Concern Consistency
 - "healthy" status MUST have empty concerns list
 - "warning" or "critical" MUST have at least one concern
 
-### Rule 4: Accept Valid Analyses (IMPORTANT - Be Lenient)
-- If status matches thresholds AND concerns match data → verdict: "accept"
-- Do NOT require perfect wording - focus ONLY on STATUS and CONCERNS correctness
-- Do NOT require scheduler metrics unless the analysis makes FALSE claims about scheduler data
-- If the summary mentions "scheduler metrics normal" but no scheduler data was collected, this is acceptable as long as no scheduler CONCERNS are raised
-- Minor imprecision or extra claims in summaries are acceptable if the STATUS and CONCERNS are correct
-- Focus on: Is the status correct for the memory threshold? Are concerns present/absent as required?
+### 4. Accept Valid Analyses (Be Lenient)
+- Focus on whether conclusions are supported by data
+- Do NOT require perfect wording - focus on STATUS and CONCERNS correctness
+- Minor imprecision in summaries is acceptable if the overall assessment is correct
 
 {{ _.role("user") }}
 ## Analysis Under Review
@@ -209,28 +196,14 @@ Recommendations: {{ analysis.recommendations }}
 
 ## Your Evaluation Process
 
-**Step 1**: Extract memory values from event trail:
-- Find get_memory_stats result
-- processes_mb = ?
-- system_mb = ?
-- total_mb = ?
+1. Review the collected metrics in the event trail
+2. Assess whether the status reflects the actual resource utilization levels
+3. Verify that concerns (if any) are supported by the data
+4. Check that the status and concerns are internally consistent
 
-**Step 2**: Calculate memory utilization:
-- memory_utilization = (processes_mb + system_mb) / total_mb × 100 = ?%
-
-**Step 3**: Determine required status based on memory:
-- If < 60% → should be "healthy" with no memory concerns
-- If 60-84% → should be "warning" with memory concern
-- If >= 85% → should be "critical" with memory concern
-
-**Step 4**: Compare analysis to requirements:
-- Does the analysis status match what the calculated threshold requires?
-- Does the analysis have appropriate concerns (or lack thereof) for the threshold?
-- IGNORE summary wording issues - only check status and concerns
-
-**Step 5**: Verdict:
-- "accept" if analysis status and concerns correctly match the memory threshold
-- "retry" if there is a mismatch between calculated threshold and analysis status/concerns
+Verdict:
+- "accept" if the analysis conclusions are reasonably supported by the data
+- "retry" if there are significant mismatches between data and conclusions
 
 ## Attempt {{ attempt }} of 3
 

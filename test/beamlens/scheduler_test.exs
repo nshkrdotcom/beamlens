@@ -203,6 +203,16 @@ defmodule Beamlens.SchedulerTest do
 
   describe "crash isolation" do
     test "scheduler survives task crash" do
+      parent = self()
+      ref = make_ref()
+
+      :telemetry.attach(
+        ref,
+        [:beamlens, :schedule, :failed],
+        fn _event, _measurements, _metadata, _ -> send(parent, :task_failed) end,
+        nil
+      )
+
       run_fun = fn _opts ->
         raise "boom!"
       end
@@ -216,43 +226,17 @@ defmodule Beamlens.SchedulerTest do
       {:ok, pid} = GenServer.start_link(Scheduler, opts, name: Scheduler)
 
       try do
-        # Trigger the crash
         assert :ok = Scheduler.run_now(:crasher)
+        assert_receive :task_failed
 
-        # Wait for crash to clear running state (poll with :sys.get_state)
-        wait_until(fn ->
-          schedule = Scheduler.get_schedule(:crasher)
-          schedule.running? == false
-        end)
-
-        # Scheduler should still be alive
         assert Process.alive?(pid)
 
-        # Schedule should be cleared (not running anymore)
         schedule = Scheduler.get_schedule(:crasher)
         assert schedule.running? == false
       after
+        :telemetry.detach(ref)
         GenServer.stop(pid)
         Supervisor.stop(sup)
-      end
-    end
-  end
-
-  # Helper to wait for a condition without Process.sleep
-  defp wait_until(fun, timeout \\ 1000, interval \\ 10) do
-    deadline = System.monotonic_time(:millisecond) + timeout
-    do_wait_until(fun, deadline, interval)
-  end
-
-  defp do_wait_until(fun, deadline, interval) do
-    if fun.() do
-      :ok
-    else
-      if System.monotonic_time(:millisecond) >= deadline do
-        raise "Timed out waiting for condition"
-      else
-        :timer.sleep(interval)
-        do_wait_until(fun, deadline, interval)
       end
     end
   end

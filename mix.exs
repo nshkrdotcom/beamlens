@@ -92,6 +92,26 @@ defmodule Beamlens.MixProject do
           Beamlens.Judge,
           Beamlens.HealthAnalysis
         ],
+        Watchers: [
+          Beamlens.Watchers.Watcher,
+          Beamlens.Watchers.Server,
+          Beamlens.Watchers.Status,
+          Beamlens.Watchers.Supervisor,
+          Beamlens.Watchers.BeamWatcher,
+          Beamlens.Watchers.Beam.BeamObservation,
+          Beamlens.Watchers.ObservationHistory
+        ],
+        Baseline: [
+          Beamlens.Watchers.Baseline,
+          Beamlens.Watchers.Baseline.Analyzer,
+          Beamlens.Watchers.Baseline.Context,
+          Beamlens.Watchers.Baseline.Decision
+        ],
+        Reports: [
+          Beamlens.Report,
+          Beamlens.ReportQueue,
+          Beamlens.ReportHandler
+        ],
         Events: [
           Beamlens.Events,
           Beamlens.Events.JudgeCall,

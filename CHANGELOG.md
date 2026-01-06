@@ -9,18 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Judge agent that reviews health analyses for quality — verifies conclusions match collected data
-- Evaluator-optimizer pattern with automatic retry when judge identifies issues
-- `:judge` option to enable/disable quality verification (enabled by default)
+- Judge agent that double-checks AI conclusions against raw data
+- Automatic retry when the judge finds issues with an analysis
+- `:judge` option to enable/disable quality checks (enabled by default)
 - `:max_judge_retries` option to control retry attempts (default: 2)
 - `JudgeCall` event type in `HealthAnalysis.events` for audit trail
 - Telemetry events for judge lifecycle: `[:beamlens, :judge, :start | :stop | :exception]`
-- Event system for data provenance — verify AI conclusions against raw data
+- Event tracking to trace how AI reached its conclusions
 - `HealthAnalysis.events` field with ordered list of all events during analysis
-- `get_overview` tool that provides quick health snapshot with pre-calculated utilization percentages
-- `reasoning` field in `HealthAnalysis` that explains how the agent reached its assessment
-- `get_top_processes` tool for drilling into process-level details with pagination
-- Parameterized tools — tools can now accept parameters from the LLM for progressive disclosure
+- `get_overview` tool for quick health snapshot with utilization percentages
+- `reasoning` field in `HealthAnalysis` explaining how the agent reached its assessment
+- `get_top_processes` tool for drilling into process-level details
+- Tools can now accept parameters from the AI for focused data collection
+- Watcher system — background monitors that run on schedules and report problems
+- AI-based baseline learning — watchers learn what "normal" looks like, no manual thresholds
+- Built-in BEAM watcher for VM metrics (memory, processes, schedulers)
+- `Beamlens.investigate/1` — analyze pending watcher reports using AI
+- `Beamlens.list_watchers/0` — list all running watchers with status
+- `Beamlens.trigger_watcher/1` — manually trigger a specific watcher
+- `Beamlens.watcher_status/1` — get details about a specific watcher
+- `Beamlens.pending_reports?/0` — check if reports are waiting for investigation
+- `Watcher` behaviour for implementing custom monitors
+- Report system (`Report`, `ReportQueue`, `ReportHandler`) for watcher communication
+- Telemetry events for watcher lifecycle: `[:beamlens, :watcher, :started | :triggered | :check_start | :check_stop]`
+- `:report_handler` config option with `:on_report` (auto) and `:manual` trigger modes
 
 ### Changed
 
@@ -29,6 +41,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - All stop events now include `duration` measurement and result data
 - Tool execute functions now receive a params map, enabling tools to accept LLM-provided parameters
 - Agent now collects a complete snapshot of all metrics upfront, reducing LLM roundtrips for typical analyses
+- Configuration uses `:watchers` instead of `:schedules`
+- `list_schedules/0` → `list_watchers/0`
+- `get_schedule/1` → `watcher_status/1`
+- `run_now/1` → `trigger_watcher/1`
 
 ## [0.1.0] - 2025-01-03
 

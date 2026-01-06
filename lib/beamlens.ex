@@ -2,9 +2,27 @@ defmodule Beamlens do
   @moduledoc """
   BeamLens - AI-powered BEAM VM health monitoring.
 
-  An AI agent that periodically analyzes BEAM VM metrics and generates
-  actionable health assessments using Claude. Safe by design: all operations
-  are read-only with no side effects, and no sensitive data is exposed.
+  An orchestrator-workers architecture where specialized **watchers** monitor
+  BEAM VM metrics on cron schedules and report anomalies to an **orchestrator**
+  that correlates findings and conducts deeper investigations using AI.
+
+  ## Architecture
+
+  ```
+  ┌─────────────────┐     ┌─────────────────┐
+  │  BEAM Watcher   │     │  Custom Watcher │
+  │    (worker)     │     │    (worker)     │
+  └────────┬────────┘     └────────┬────────┘
+           │ report (only if anomaly)       │
+           └───────────────┬───────────────┘
+                           ▼
+              ┌────────────────────────┐
+              │    ReportHandler       │
+              │   - receives reports   │
+              │   - triggers Agent     │
+              │   - correlates & AI    │
+              └────────────────────────┘
+  ```
 
   ## Installation
 
@@ -21,7 +39,7 @@ defmodule Beamlens do
 
         def start(_type, _args) do
           children = [
-            {Beamlens, schedules: [{:default, "*/5 * * * *"}]}
+            {Beamlens, watchers: [{:beam, "*/5 * * * *"}]}
           ]
 
           Supervisor.start_link(children, strategy: :one_for_one)
@@ -32,63 +50,60 @@ defmodule Beamlens do
 
   Options passed to `Beamlens`:
 
-    * `:schedules` - List of schedule configurations (see below)
-    * `:agent_opts` - Global options passed to all agent runs, including:
-      * `:collectors` - List of collector modules (default: `[Beamlens.Collectors.Beam]`)
+    * `:watchers` - List of watcher configurations (see below)
+    * `:report_handler` - Report handler options:
+      * `:trigger` - `:on_report` (auto-run) or `:manual` (default: `:on_report`)
     * `:circuit_breaker` - Circuit breaker options (see below)
 
-  ### Circuit Breaker Configuration
+  ### Watcher Configuration
 
-  The circuit breaker prevents cascading failures when the LLM provider is unavailable.
-  It is disabled by default and must be explicitly enabled:
+  Watchers can be specified using tuple shorthand or full keyword lists:
 
-      {Beamlens,
-        schedules: [{:default, "*/5 * * * *"}],
-        circuit_breaker: [
-          enabled: true,
-          failure_threshold: 5,
-          reset_timeout: 30_000,
-          success_threshold: 2
-        ]}
+      # Built-in BEAM watcher
+      {:beam, "*/5 * * * *"}
 
-  ### Schedule Configuration
-
-  Schedules can be specified using tuple shorthand or full keyword lists:
-
-      {:default, "*/5 * * * *"}
-
-      [name: :nightly, cron: "0 2 * * *", agent_opts: [timeout: 300_000]]
+      # Custom watcher
+      [name: :postgres, watcher_module: MyApp.Watchers.Postgres,
+       cron: "*/10 * * * *", config: [repo: MyApp.Repo]]
 
   ### Example Configuration
 
       {Beamlens,
-        schedules: [
-          {:frequent, "*/5 * * * *"},
-          [name: :nightly, cron: "0 2 * * *", agent_opts: [timeout: 300_000]]
+        watchers: [
+          {:beam, "*/1 * * * *"},
+          [name: :postgres, watcher_module: MyApp.Watchers.Postgres,
+           cron: "*/5 * * * *", config: [repo: MyApp.Repo]]
         ],
-        agent_opts: [
-          timeout: 60_000,
-          max_iterations: 10,
-          collectors: [Beamlens.Collectors.Beam, MyApp.Collectors.Postgres]
+        report_handler: [
+          trigger: :on_report
+        ],
+        circuit_breaker: [
+          enabled: true
         ]}
 
   ## Manual Usage
 
-  You can also run the agent manually without the scheduler:
+  You can run analyses manually:
 
+      # Run the original agent directly (snapshot + tool loop)
       {:ok, analysis} = Beamlens.run()
 
-      {:ok, analysis} = Beamlens.run(timeout: 120_000)
+      # Investigate pending watcher reports
+      {:ok, analysis} = Beamlens.investigate()
+
+      # Trigger a specific watcher manually
+      :ok = Beamlens.trigger_watcher(:beam)
 
   ## Runtime API
 
-  When using the scheduler, you can interact with schedules at runtime:
+      # List all running watchers
+      Beamlens.list_watchers()
 
-      Beamlens.list_schedules()
+      # Check for pending reports
+      Beamlens.pending_reports?()
 
-      Beamlens.get_schedule(:default)
-
-      Beamlens.run_now(:default)
+      # Trigger specific watcher
+      Beamlens.trigger_watcher(:beam)
 
   ## Telemetry Events
 
@@ -111,7 +126,10 @@ defmodule Beamlens do
   end
 
   @doc """
-  Manually trigger a health analysis.
+  Manually trigger a health analysis using the direct agent loop.
+
+  This bypasses watchers and runs a complete analysis immediately,
+  collecting a snapshot and using the AI to investigate.
 
   Returns `{:ok, analysis}` on success, or `{:error, reason}` on failure.
 
@@ -130,21 +148,55 @@ defmodule Beamlens do
   defdelegate run(opts \\ []), to: Beamlens.Agent
 
   @doc """
-  Returns all configured schedules.
+  Investigates pending watcher reports using the agent's tool-calling loop.
+
+  Takes all reports from the queue and runs an investigation to correlate
+  findings and analyze deeper.
+
+  Returns `{:ok, analysis}` if reports were processed,
+  `{:ok, :no_reports}` if no reports were pending.
+
+  ## Options
+
+    * `:trace_id` - Correlation ID for telemetry (auto-generated if not provided)
   """
-  defdelegate list_schedules(), to: Beamlens.Scheduler
+  def investigate(opts \\ []) do
+    Beamlens.ReportHandler.investigate(Beamlens.ReportHandler, opts)
+  end
 
   @doc """
-  Returns a specific schedule by name, or nil if not found.
+  Lists all running watchers with their status.
+
+  Returns a list of maps with watcher information including:
+    * `:name` - Watcher name
+    * `:watcher` - Domain being monitored
+    * `:cron` - Cron schedule
+    * `:next_run_at` - Next scheduled run
+    * `:last_run_at` - Last run time
+    * `:run_count` - Number of times the watcher has run
   """
-  defdelegate get_schedule(name), to: Beamlens.Scheduler
+  defdelegate list_watchers(), to: Beamlens.Watchers.Supervisor
 
   @doc """
-  Triggers an immediate run for the given schedule.
+  Triggers an immediate check for a specific watcher.
 
-  Returns `{:error, :already_running}` if the schedule is already executing.
+  Useful for testing or manual intervention.
+
+  Returns `:ok` on success, `{:error, :not_found}` if watcher doesn't exist.
   """
-  defdelegate run_now(name), to: Beamlens.Scheduler
+  defdelegate trigger_watcher(name), to: Beamlens.Watchers.Supervisor
+
+  @doc """
+  Gets the status of a specific watcher.
+
+  Returns `{:ok, status}` on success, `{:error, :not_found}` if watcher doesn't exist.
+  """
+  defdelegate watcher_status(name), to: Beamlens.Watchers.Supervisor
+
+  @doc """
+  Checks if there are pending reports to investigate.
+  """
+  defdelegate pending_reports?(), to: Beamlens.ReportQueue, as: :pending?
 
   @doc """
   Returns the current circuit breaker state.

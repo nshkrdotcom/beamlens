@@ -38,7 +38,12 @@ Investigate ETS table growth, potentially from cache or session storage."
 
 ## How It Works
 
-BeamLens runs in your supervision tree. Schedule it with a cron expression for continuous monitoring, or call `Beamlens.run()` directly when you need it. It emits telemetry events you can consume with your existing observability stack.
+BeamLens uses an **orchestrator-workers** architecture. Watchers continuously monitor specific domains (BEAM VM, databases, etc.) on cron schedules. When they detect anomalies, an AI agent investigates and correlates findings.
+
+**Key features:**
+- **LLM-based baseline learning** — Watchers learn normal behavior over time, no manual thresholds needed
+- **Automatic anomaly detection** — Deviations from baseline trigger investigation
+- **Telemetry integration** — All events flow through your existing observability stack
 
 No separate services to deploy. Just an Elixir library.
 
@@ -63,12 +68,14 @@ Add to your supervision tree:
 ```elixir
 def start(_type, _args) do
   children = [
-    {Beamlens, schedules: [{:default, "*/5 * * * *"}]}
+    {Beamlens, watchers: [{:beam, "*/5 * * * *"}]}
   ]
 
   Supervisor.start_link(children, strategy: :one_for_one)
 end
 ```
+
+The `:beam` watcher monitors BEAM VM metrics (memory, processes, schedulers). It learns baseline behavior automatically and reports anomalies when detected.
 
 ## Manual Triggering
 
@@ -100,7 +107,29 @@ The `HealthAnalysis` struct contains:
 | `reasoning` | `String.t() \| nil` | Explanation of how the assessment was reached |
 | `events` | `[Events.t()]` | Execution trace (LLM calls, tool calls, judge reviews) |
 
-### Quality Verification
+## Watcher Management
+
+Monitor and control watchers at runtime:
+
+```elixir
+# List all running watchers
+Beamlens.list_watchers()
+#=> [%{watcher: :beam, cron: "*/5 * * * *", run_count: 12, ...}]
+
+# Manually trigger a watcher check
+Beamlens.trigger_watcher(:beam)
+
+# Get detailed status for a watcher
+Beamlens.watcher_status(:beam)
+
+# Check if reports are pending investigation
+Beamlens.pending_reports?()
+
+# Investigate pending reports
+{:ok, analysis} = Beamlens.investigate()
+```
+
+## Quality Verification
 
 By default, a judge agent reviews each analysis to verify conclusions are supported by collected data. If the judge finds issues, the agent automatically retries with feedback.
 
@@ -141,7 +170,7 @@ Opt-in protection against LLM provider failures:
 
 ```elixir
 {Beamlens,
-  schedules: [{:default, "*/5 * * * *"}],
+  watchers: [{:beam, "*/5 * * * *"}],
   circuit_breaker: [enabled: true, failure_threshold: 5, reset_timeout: 30_000]}
 ```
 
@@ -150,7 +179,9 @@ Opt-in protection against LLM provider failures:
 - `Beamlens` — Main module with full configuration options
 - `Beamlens.Agent` — AI agent implementation details
 - `Beamlens.Judge` — Quality verification agent
-- `Beamlens.Scheduler` — Cron scheduling details
+- `Beamlens.Watchers.Watcher` — Behaviour for implementing custom watchers
+- `Beamlens.Watchers.BeamWatcher` — Built-in BEAM VM watcher
+- `Beamlens.Report` — Watcher anomaly reports
 - `Beamlens.Telemetry` — Telemetry events for observability
 
 ## License

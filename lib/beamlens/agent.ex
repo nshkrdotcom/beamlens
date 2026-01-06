@@ -32,6 +32,8 @@ defmodule Beamlens.Agent do
   alias Beamlens.{CircuitBreaker, Judge, Telemetry, Tools}
   alias Beamlens.Collectors.Beam
   alias Beamlens.Events.{LLMCall, ToolCall}
+  alias Beamlens.Watchers.BeamWatcher
+  alias Beamlens.Watchers.Supervisor, as: WatchersSupervisor
   alias Puck.Context
 
   @default_max_iterations 10
@@ -105,26 +107,47 @@ defmodule Beamlens.Agent do
     end
   end
 
+  @doc """
+  Investigate watcher reports using the agent loop.
+
+  Takes reports from watchers (via ReportQueue) and uses the tool-calling
+  loop to correlate findings and investigate deeper.
+
+  ## Options
+
+  Same as `run/1`.
+
+  ## Examples
+
+      reports = ReportQueue.take_all()
+      {:ok, analysis} = Agent.investigate(reports)
+
+      # Returns immediately if no reports
+      {:ok, :no_reports} = Agent.investigate([])
+  """
+  def investigate(reports, opts \\ []) when is_list(reports) do
+    if reports == [] do
+      {:ok, :no_reports}
+    else
+      opts = Keyword.put(opts, :mode, :investigate)
+      opts = Keyword.put(opts, :reports, reports)
+      run(opts)
+    end
+  end
+
   defp run_agent_loop(opts) do
+    mode = Keyword.get(opts, :mode, :snapshot)
     max_iterations = Keyword.get(opts, :max_iterations, @default_max_iterations)
     timeout = Keyword.get(opts, :timeout, @default_timeout)
     llm_client = Keyword.get(opts, :llm_client)
     client_registry = Keyword.get(opts, :client_registry)
     trace_id = Keyword.get(opts, :trace_id)
-    collectors = Keyword.get(opts, :collectors, default_collectors())
-    initial_context = Keyword.get(opts, :initial_context)
 
-    tools = collect_tools(collectors)
-
-    # Collect snapshot first - provides all metrics upfront
-    snapshot = Beam.snapshot()
-    snapshot_json = Jason.encode!(snapshot)
-
-    snapshot_event = %ToolCall{
-      intent: "snapshot",
-      occurred_at: DateTime.utc_now(),
-      result: snapshot
-    }
+    {initial_messages, initial_events, tools} =
+      case mode do
+        :snapshot -> build_snapshot_context(opts)
+        :investigate -> build_investigation_context(opts)
+      end
 
     backend_config =
       %{
@@ -140,15 +163,6 @@ defmodule Beamlens.Agent do
         hooks: Beamlens.Telemetry.Hooks
       )
 
-    # Build initial messages with snapshot first
-    initial_messages =
-      [Puck.Message.new(:user, snapshot_json, %{tool: "snapshot"})] ++
-        if initial_context do
-          [Puck.Message.new(:user, initial_context, %{judge_feedback: true})]
-        else
-          []
-        end
-
     context =
       Context.new(
         messages: initial_messages,
@@ -157,12 +171,62 @@ defmodule Beamlens.Agent do
           started_at: DateTime.utc_now(),
           node: Node.self(),
           iteration: 0,
-          tool_count: 1,
-          events: [snapshot_event]
+          tool_count: length(initial_events),
+          events: initial_events,
+          mode: mode
         }
       )
 
     loop(client, context, max_iterations, timeout, tools)
+  end
+
+  defp build_snapshot_context(opts) do
+    collectors = Keyword.get(opts, :collectors, default_collectors())
+    tools = collect_tools(collectors)
+    initial_context = Keyword.get(opts, :initial_context)
+
+    snapshot = Beam.snapshot()
+    snapshot_json = Jason.encode!(snapshot)
+
+    snapshot_event = %ToolCall{
+      intent: "snapshot",
+      occurred_at: DateTime.utc_now(),
+      result: snapshot
+    }
+
+    messages =
+      [Puck.Message.new(:user, snapshot_json, %{tool: "snapshot"})] ++
+        if initial_context do
+          [Puck.Message.new(:user, initial_context, %{judge_feedback: true})]
+        else
+          []
+        end
+
+    {messages, [snapshot_event], tools}
+  end
+
+  defp build_investigation_context(opts) do
+    reports = Keyword.fetch!(opts, :reports)
+    tools = collect_watcher_tools()
+    initial_context = Keyword.get(opts, :initial_context)
+
+    reports_summary = build_reports_summary(reports)
+
+    report_event = %ToolCall{
+      intent: "watcher_reports",
+      occurred_at: DateTime.utc_now(),
+      result: %{reports: Enum.map(reports, &report_to_map/1)}
+    }
+
+    messages =
+      [Puck.Message.new(:user, reports_summary, %{watcher_reports: true})] ++
+        if initial_context do
+          [Puck.Message.new(:user, initial_context, %{judge_feedback: true})]
+        else
+          []
+        end
+
+    {messages, [report_event], tools}
   end
 
   defp run_with_judge(opts, max_retries, attempt \\ 1, accumulated_events \\ []) do
@@ -184,37 +248,18 @@ defmodule Beamlens.Agent do
         case Judge.review(analysis_with_all_events, judge_opts) do
           {:ok, %{verdict: :accept} = judge_event} ->
             final_events = all_events ++ [judge_event]
-
-            Logger.info("[BeamLens] Judge accepted analysis on attempt #{attempt}",
-              trace_id: trace_id
-            )
-
             {:ok, %{analysis | events: final_events}}
 
           {:ok, %{verdict: :retry} = judge_event} when attempt <= max_retries ->
-            Logger.info(
-              "[BeamLens] Judge requested retry (attempt #{attempt}/#{max_retries + 1}): #{judge_event.feedback}",
-              trace_id: trace_id
-            )
-
             new_events = all_events ++ [judge_event]
             feedback_opts = inject_feedback(opts, judge_event)
             run_with_judge(feedback_opts, max_retries, attempt + 1, new_events)
 
           {:ok, %{verdict: :retry} = judge_event} ->
-            Logger.warning(
-              "[BeamLens] Judge rejected after #{attempt} attempts, returning anyway",
-              trace_id: trace_id
-            )
-
             final_events = all_events ++ [judge_event]
             {:ok, %{analysis | events: final_events}}
 
-          {:error, reason} ->
-            Logger.warning("[BeamLens] Judge failed: #{inspect(reason)}, returning analysis",
-              trace_id: trace_id
-            )
-
+          {:error, _reason} ->
             {:ok, analysis_with_all_events}
         end
 
@@ -238,11 +283,7 @@ defmodule Beamlens.Agent do
     Enum.flat_map(collectors, & &1.tools())
   end
 
-  defp loop(_client, context, 0, _timeout, _tools) do
-    Logger.warning("[BeamLens] Agent reached max iterations without completing",
-      trace_id: context.metadata.trace_id
-    )
-
+  defp loop(_client, _context, 0, _timeout, _tools) do
     {:error, :max_iterations_exceeded}
   end
 
@@ -264,17 +305,9 @@ defmodule Beamlens.Agent do
         execute_tool(response.content, client, context_with_event, remaining - 1, timeout, tools)
 
       {:error, :timeout} ->
-        Logger.warning("[BeamLens] LLM call timed out after #{timeout}ms",
-          trace_id: context.metadata.trace_id
-        )
-
         {:error, :timeout}
 
-      {:error, reason} = error ->
-        Logger.warning("[BeamLens] SelectTool failed: #{inspect(reason)}",
-          trace_id: context.metadata.trace_id
-        )
-
+      {:error, _reason} = error ->
         error
     end
   end
@@ -283,10 +316,6 @@ defmodule Beamlens.Agent do
     if circuit_breaker_allows?() do
       execute_llm_call(client, context, timeout)
     else
-      Logger.warning("[BeamLens] Circuit breaker open, skipping LLM call",
-        trace_id: context.metadata.trace_id
-      )
-
       {:error, :circuit_open}
     end
   end
@@ -352,12 +381,6 @@ defmodule Beamlens.Agent do
          _tools
        ) do
     analysis_with_events = %{analysis | events: context.metadata.events}
-
-    Logger.info("[BeamLens] Agent completed with status: #{analysis.status}",
-      trace_id: context.metadata.trace_id,
-      tool_count: context.metadata.tool_count
-    )
-
     {:ok, analysis_with_events}
   end
 
@@ -368,19 +391,11 @@ defmodule Beamlens.Agent do
         execute_and_continue(client, context, tool, params, remaining, timeout, tools)
 
       :error ->
-        Logger.warning("[BeamLens] Unknown tool: #{intent}",
-          trace_id: context.metadata.trace_id
-        )
-
         {:error, {:unknown_tool, intent}}
     end
   end
 
-  defp execute_tool(unknown, _client, context, _remaining, _timeout, _tools) do
-    Logger.warning("[BeamLens] Unknown tool response: #{inspect(unknown)}",
-      trace_id: context.metadata.trace_id
-    )
-
+  defp execute_tool(unknown, _client, _context, _remaining, _timeout, _tools) do
     {:error, {:unknown_tool, unknown}}
   end
 
@@ -429,12 +444,6 @@ defmodule Beamlens.Agent do
 
       {:error, reason} ->
         Telemetry.emit_tool_exception(trace_metadata, reason, start_time)
-
-        Logger.error("[BeamLens] Failed to encode tool result: #{inspect(reason)}",
-          trace_id: context.metadata.trace_id,
-          tool_name: tool.intent
-        )
-
         {:error, {:encoding_failed, tool.intent, reason}}
     end
   end
@@ -458,6 +467,61 @@ defmodule Beamlens.Agent do
 
   defp default_collectors do
     Application.get_env(:beamlens, :collectors, [Beamlens.Collectors.Beam])
+  end
+
+  defp collect_watcher_tools do
+    case Process.whereis(Beamlens.WatcherRegistry) do
+      nil ->
+        BeamWatcher.tools()
+
+      _pid ->
+        tools =
+          WatchersSupervisor.list_watchers()
+          |> Enum.flat_map(fn watcher_status ->
+            watcher_status.watcher
+            |> get_watcher_module()
+            |> case do
+              {:ok, module} -> module.tools()
+              :error -> []
+            end
+          end)
+          |> Enum.uniq_by(& &1.intent)
+
+        if tools == [], do: BeamWatcher.tools(), else: tools
+    end
+  end
+
+  defp get_watcher_module(:beam), do: {:ok, BeamWatcher}
+  defp get_watcher_module(_), do: :error
+
+  defp build_reports_summary(reports) do
+    reports_json =
+      reports
+      |> Enum.map(&report_to_map/1)
+      |> Jason.encode!()
+
+    """
+    [WATCHER REPORTS]
+    The following anomalies were detected by watchers. Each report includes
+    a frozen snapshot taken at detection time.
+
+    #{reports_json}
+
+    Analyze these reports, correlate findings, and investigate further if needed.
+    """
+  end
+
+  defp report_to_map(report) do
+    %{
+      id: report.id,
+      watcher: report.watcher,
+      anomaly_type: report.anomaly_type,
+      severity: report.severity,
+      summary: report.summary,
+      snapshot: report.snapshot,
+      detected_at: DateTime.to_iso8601(report.detected_at),
+      node: report.node
+    }
   end
 
   defp maybe_add_client_config(config, nil, nil), do: config
