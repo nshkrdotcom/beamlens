@@ -6,6 +6,13 @@ defmodule Beamlens.ToolsTest do
   alias Beamlens.Tools
 
   describe "schema/0" do
+    test "parses get_overview response" do
+      input = %{intent: "get_overview"}
+
+      assert {:ok, result} = Zoi.parse(Tools.schema(), input)
+      assert %Tools.GetOverview{intent: "get_overview"} = result
+    end
+
     test "parses get_system_info response" do
       input = %{intent: "get_system_info"}
 
@@ -46,6 +53,20 @@ defmodule Beamlens.ToolsTest do
 
       assert {:ok, result} = Zoi.parse(Tools.schema(), input)
       assert %Tools.GetPersistentTerms{intent: "get_persistent_terms"} = result
+    end
+
+    test "parses get_top_processes response with parameters" do
+      input = %{intent: "get_top_processes", limit: 5, offset: 10, sort_by: "memory"}
+
+      assert {:ok, result} = Zoi.parse(Tools.schema(), input)
+      assert %Tools.GetTopProcesses{intent: "get_top_processes", limit: 5, offset: 10} = result
+    end
+
+    test "parses get_top_processes response without parameters" do
+      input = %{intent: "get_top_processes"}
+
+      assert {:ok, result} = Zoi.parse(Tools.schema(), input)
+      assert %Tools.GetTopProcesses{intent: "get_top_processes"} = result
     end
 
     test "parses done response with valid analysis" do

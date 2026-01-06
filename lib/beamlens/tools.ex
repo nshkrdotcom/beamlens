@@ -6,6 +6,11 @@ defmodule Beamlens.Tools do
   The union schema parses raw BAML responses into typed structs.
   """
 
+  defmodule GetOverview do
+    @moduledoc false
+    defstruct [:intent]
+  end
+
   defmodule GetSystemInfo do
     @moduledoc false
     defstruct [:intent]
@@ -53,6 +58,7 @@ defmodule Beamlens.Tools do
   """
   def schema do
     Zoi.union([
+      tool_schema(GetOverview, "get_overview"),
       tool_schema(GetSystemInfo, "get_system_info"),
       tool_schema(GetMemoryStats, "get_memory_stats"),
       tool_schema(GetProcessStats, "get_process_stats"),

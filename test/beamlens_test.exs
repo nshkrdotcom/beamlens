@@ -22,10 +22,10 @@ defmodule BeamlensTest do
   end
 
   describe "Beam collector tools/0" do
-    test "returns list of 7 Tool structs" do
+    test "returns list of 8 Tool structs" do
       tools = Beam.tools()
 
-      assert length(tools) == 7
+      assert length(tools) == 8
       assert Enum.all?(tools, &match?(%Tool{}, &1))
       assert Enum.all?(tools, &is_atom(&1.name))
       assert Enum.all?(tools, &is_binary(&1.intent))
@@ -38,6 +38,46 @@ defmodule BeamlensTest do
       intents = Enum.map(tools, & &1.intent)
 
       assert intents == Enum.uniq(intents)
+    end
+  end
+
+  describe "Beam collector - get_overview tool" do
+    setup do
+      tool = find_tool("get_overview")
+      %{tool: tool}
+    end
+
+    test "returns expected structure", %{tool: tool} do
+      overview = tool.execute.(%{})
+
+      assert is_float(overview.memory_utilization_pct)
+      assert is_float(overview.process_utilization_pct)
+      assert is_float(overview.port_utilization_pct)
+      assert is_float(overview.atom_utilization_pct)
+      assert is_integer(overview.scheduler_run_queue)
+      assert is_integer(overview.schedulers_online)
+      assert overview.schedulers_online > 0
+    end
+
+    test "percentages are within valid range", %{tool: tool} do
+      overview = tool.execute.(%{})
+
+      assert overview.memory_utilization_pct >= 0.0
+      assert overview.memory_utilization_pct <= 100.0
+      assert overview.process_utilization_pct >= 0.0
+      assert overview.process_utilization_pct <= 100.0
+      assert overview.port_utilization_pct >= 0.0
+      assert overview.port_utilization_pct <= 100.0
+      assert overview.atom_utilization_pct >= 0.0
+      assert overview.atom_utilization_pct <= 100.0
+    end
+
+    test "is read-only (no side effects)", %{tool: tool} do
+      o1 = tool.execute.(%{})
+      o2 = tool.execute.(%{})
+
+      assert Map.keys(o1) == Map.keys(o2)
+      assert o1.schedulers_online == o2.schedulers_online
     end
   end
 

@@ -14,9 +14,16 @@ defmodule Beamlens.Collectors.Beam do
   def tools do
     [
       %Tool{
+        name: :overview,
+        intent: "get_overview",
+        description:
+          "Get high-level utilization percentages across all categories (call first to identify areas needing investigation)",
+        execute: fn _params -> overview() end
+      },
+      %Tool{
         name: :system_info,
         intent: "get_system_info",
-        description: "Get basic node context (always call first)",
+        description: "Get node identity and context (OTP version, uptime, schedulers)",
         execute: fn _params -> system_info() end
       },
       %Tool{
@@ -56,6 +63,27 @@ defmodule Beamlens.Collectors.Beam do
         execute: &top_processes/1
       }
     ]
+  end
+
+  defp overview do
+    memory = :erlang.memory()
+    total_mem = memory[:total]
+    used_mem = memory[:processes] + memory[:system]
+
+    %{
+      memory_utilization_pct: Float.round(used_mem / total_mem * 100, 1),
+      process_utilization_pct:
+        Float.round(
+          :erlang.system_info(:process_count) / :erlang.system_info(:process_limit) * 100,
+          2
+        ),
+      port_utilization_pct:
+        Float.round(:erlang.system_info(:port_count) / :erlang.system_info(:port_limit) * 100, 2),
+      atom_utilization_pct:
+        Float.round(:erlang.system_info(:atom_count) / :erlang.system_info(:atom_limit) * 100, 2),
+      scheduler_run_queue: :erlang.statistics(:run_queue),
+      schedulers_online: :erlang.system_info(:schedulers_online)
+    }
   end
 
   defp system_info do

@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Telemetry events for judge lifecycle: `[:beamlens, :judge, :start | :stop | :exception]`
 - Event system for data provenance — verify AI conclusions against raw data
 - `HealthAnalysis.events` field with ordered list of all events during analysis
+- `get_overview` tool that provides quick health snapshot with pre-calculated utilization percentages
 - `get_top_processes` tool for drilling into process-level details with pagination
 - Parameterized tools — tools can now accept parameters from the LLM for progressive disclosure
 

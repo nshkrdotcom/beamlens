@@ -26,8 +26,12 @@ class HealthAnalysis {
 
 // Tool classes with intent literals for disambiguation (per BAML docs pattern)
 
+class GetOverview {
+  intent "get_overview" @description(#"Get high-level utilization percentages across all categories"#)
+}
+
 class GetSystemInfo {
-  intent "get_system_info" @description(#"Get basic node context"#)
+  intent "get_system_info" @description(#"Get node identity and context (OTP version, uptime, schedulers)"#)
 }
 
 class GetMemoryStats {
@@ -68,20 +72,35 @@ class Message {
 }
 
 // Union type - LLM picks exactly one tool
-function SelectTool(messages: Message[]) -> GetSystemInfo | GetMemoryStats | GetProcessStats | GetSchedulerStats | GetAtomStats | GetPersistentTerms | GetTopProcesses | Done {
+function SelectTool(messages: Message[]) -> GetOverview | GetSystemInfo | GetMemoryStats | GetProcessStats | GetSchedulerStats | GetAtomStats | GetPersistentTerms | GetTopProcesses | Done {
   client Default
   prompt #"
 You are a BEAM VM health analyst. Analyze VM metrics and produce a health assessment.
 
 ## Analysis Process
-1. Start with get_system_info to establish context
-2. Gather 2-4 additional metrics based on initial findings
-3. Complete with "done" once you have sufficient data
+1. Start with get_overview to see utilization percentages across all categories
+2. Investigate any category showing elevated utilization (>=60%)
+3. Use get_system_info if you need node context (OTP version, uptime)
+4. Complete with "done" once you have sufficient data
 
 ## When to Complete
-- You have system info + at least 2 other metrics
+- You have overview + at least 1-2 detailed metrics for any elevated categories
 - You've identified a clear health status
 - Additional tools wouldn't change your assessment
+
+## Overview Interpretation
+The get_overview tool returns pre-calculated percentages:
+- memory_utilization_pct: (processes + system) / total memory
+- process_utilization_pct: process_count / process_limit
+- port_utilization_pct: port_count / port_limit
+- atom_utilization_pct: atom_count / atom_limit
+- scheduler_run_queue: current run queue depth
+- schedulers_online: number of active schedulers
+
+Use these to quickly identify which categories need deeper investigation:
+- Any utilization >= 85% → CRITICAL, investigate immediately
+- Any utilization >= 60% → WARNING, get detailed stats
+- run_queue > schedulers_online * 10 → scheduler contention
 
 ## Progressive Disclosure: get_top_processes
 Use get_top_processes when you need to identify specific resource-consuming processes:
@@ -303,6 +322,7 @@ test SelectTool_InitialSelection {
   }
   @@assert(returns_tool, {{ this.intent != "done" }})
   @@assert(valid_intent, {{
+    this.intent == "get_overview" or
     this.intent == "get_system_info" or
     this.intent == "get_memory_stats" or
     this.intent == "get_process_stats" or
@@ -432,8 +452,8 @@ test SelectTool_HealthySystemDone {
   functions [SelectTool]
   args {
     messages [
-      { role "assistant", content #"{"intent":"get_system_info"}"# },
-      { role "tool", content #"{"node":"healthy@host","otp_release":"28","elixir_version":"1.19.4","uptime_seconds":3600,"schedulers_online":8}"# },
+      { role "assistant", content #"{"intent":"get_overview"}"# },
+      { role "tool", content #"{"memory_utilization_pct":58.6,"process_utilization_pct":0.19,"port_utilization_pct":0.08,"atom_utilization_pct":2.5,"scheduler_run_queue":0,"schedulers_online":8}"# },
       { role "assistant", content #"{"intent":"get_memory_stats"}"# },
       { role "tool", content #"{"total_mb":512.0,"processes_mb":100.0,"processes_used_mb":90.0,"system_mb":200.0,"binary_mb":50.0,"ets_mb":20.0,"code_mb":40.0}"# },
       { role "assistant", content #"{"intent":"get_process_stats"}"# },
@@ -713,15 +733,15 @@ test SelectTool_GetTopProcesses_WithParams {
   functions [SelectTool]
   args {
     messages [
-      { role "assistant", content #"{"intent":"get_system_info"}"# },
-      { role "tool", content #"{"node":"prod@host","otp_release":"28","elixir_version":"1.19.4","uptime_seconds":86400,"schedulers_online":8}"# },
+      { role "assistant", content #"{"intent":"get_overview"}"# },
+      { role "tool", content #"{"memory_utilization_pct":67.1,"process_utilization_pct":64.9,"port_utilization_pct":0.3,"atom_utilization_pct":5.0,"scheduler_run_queue":2,"schedulers_online":8}"# },
       { role "assistant", content #"{"intent":"get_process_stats"}"# },
       { role "tool", content #"{"process_count":170000,"process_limit":262144,"port_count":200,"port_limit":65536}"# },
       { role "assistant", content #"{"intent":"get_memory_stats"}"# },
       { role "tool", content #"{"total_mb":8192.0,"processes_mb":4000.0,"processes_used_mb":3800.0,"system_mb":1500.0,"binary_mb":300.0,"ets_mb":200.0,"code_mb":200.0}"# }
     ]
   }
-  // Process count at 65% triggers warning - agent should investigate or complete with warning
+  // Process count at 65% and memory at 67% triggers warning - agent should investigate or complete with warning
   @@assert(continues_or_warns, {{
     this.intent == "get_scheduler_stats" or
     this.intent == "get_top_processes" or
@@ -850,4 +870,69 @@ test JudgeAnalysis_RejectMissedConcern {
     attempt 1
   }
   @@assert(retries, {{ this.verdict == "retry" }})
+}
+
+// ============================================================================
+// OVERVIEW TOOL TESTS
+// ============================================================================
+
+test SelectTool_AfterOverviewHighAtom {
+  functions [SelectTool]
+  args {
+    messages [
+      { role "assistant", content #"{"intent":"get_overview"}"# },
+      { role "tool", content #"{"memory_utilization_pct":45.2,"process_utilization_pct":1.9,"port_utilization_pct":0.04,"atom_utilization_pct":90.0,"scheduler_run_queue":2,"schedulers_online":8}"# }
+    ]
+  }
+  @@assert(investigates_atoms, {{ this.intent == "get_atom_stats" }})
+}
+
+test SelectTool_AfterOverviewHighMemory {
+  functions [SelectTool]
+  args {
+    messages [
+      { role "assistant", content #"{"intent":"get_overview"}"# },
+      { role "tool", content #"{"memory_utilization_pct":75.0,"process_utilization_pct":2.5,"port_utilization_pct":0.1,"atom_utilization_pct":12.0,"scheduler_run_queue":1,"schedulers_online":8}"# }
+    ]
+  }
+  @@assert(investigates_memory, {{ this.intent == "get_memory_stats" }})
+}
+
+test SelectTool_AfterOverviewHighProcess {
+  functions [SelectTool]
+  args {
+    messages [
+      { role "assistant", content #"{"intent":"get_overview"}"# },
+      { role "tool", content #"{"memory_utilization_pct":40.0,"process_utilization_pct":70.0,"port_utilization_pct":0.1,"atom_utilization_pct":10.0,"scheduler_run_queue":0,"schedulers_online":8}"# }
+    ]
+  }
+  @@assert(investigates_processes, {{ this.intent == "get_process_stats" or this.intent == "get_top_processes" }})
+}
+
+test SelectTool_AfterOverviewSchedulerContention {
+  functions [SelectTool]
+  args {
+    messages [
+      { role "assistant", content #"{"intent":"get_overview"}"# },
+      { role "tool", content #"{"memory_utilization_pct":45.0,"process_utilization_pct":5.0,"port_utilization_pct":0.1,"atom_utilization_pct":10.0,"scheduler_run_queue":120,"schedulers_online":8}"# }
+    ]
+  }
+  @@assert(investigates_schedulers, {{ this.intent == "get_scheduler_stats" }})
+}
+
+test SelectTool_AfterOverviewHealthy {
+  functions [SelectTool]
+  args {
+    messages [
+      { role "assistant", content #"{"intent":"get_overview"}"# },
+      { role "tool", content #"{"memory_utilization_pct":35.0,"process_utilization_pct":1.5,"port_utilization_pct":0.1,"atom_utilization_pct":15.0,"scheduler_run_queue":0,"schedulers_online":8}"# }
+    ]
+  }
+  @@assert(valid_next_action, {{
+    this.intent == "get_system_info" or
+    this.intent == "get_memory_stats" or
+    this.intent == "get_process_stats" or
+    this.intent == "get_scheduler_stats" or
+    (this.intent == "done" and this.analysis.status == "healthy")
+  }})
 }
