@@ -71,8 +71,6 @@ defmodule Beamlens.Scheduler do
   alias Beamlens.Scheduler.Schedule
   alias Beamlens.Telemetry
 
-  # --- Client API ---
-
   @doc """
   Starts the scheduler with the given options.
   """
@@ -102,8 +100,6 @@ defmodule Beamlens.Scheduler do
   def run_now(name) do
     GenServer.call(__MODULE__, {:run_now, name})
   end
-
-  # --- GenServer Callbacks ---
 
   @impl true
   def init(opts) do
@@ -165,19 +161,16 @@ defmodule Beamlens.Scheduler do
       schedule == nil ->
         {:noreply, state}
 
-      # Long-delay guard: timer fired early (clamped), reschedule without running
       NaiveDateTime.compare(NaiveDateTime.utc_now(), schedule.next_run_at) == :lt ->
         state = reschedule(state, name)
         {:noreply, state}
 
-      # Already running: skip, reschedule for next occurrence
       schedule.running != nil ->
         Logger.debug("[BeamLens] Skipping #{name} - already running")
         emit_telemetry(:skipped, schedule, %{reason: :already_running})
         state = advance_and_reschedule(state, name)
         {:noreply, state}
 
-      # Time to run
       true ->
         emit_telemetry(:triggered, schedule, %{source: :scheduled})
         state = state |> advance_and_reschedule(name) |> spawn_run(name)
@@ -185,7 +178,6 @@ defmodule Beamlens.Scheduler do
     end
   end
 
-  # Handle task result message (ignore - we handle completion via :DOWN)
   def handle_info({ref, _result}, state) when is_reference(ref) do
     {:noreply, state}
   end
@@ -212,8 +204,6 @@ defmodule Beamlens.Scheduler do
         {:noreply, state}
     end
   end
-
-  # --- Private Helpers ---
 
   defp parse_all(configs) do
     Enum.reduce_while(configs, {:ok, %{}}, fn config, {:ok, acc} ->
@@ -272,7 +262,6 @@ defmodule Beamlens.Scheduler do
     trace_id = Telemetry.generate_trace_id()
     node = Atom.to_string(Node.self())
 
-    # Merge global opts with per-schedule overrides
     agent_opts =
       state.global_agent_opts
       |> Keyword.merge(schedule.agent_opts)

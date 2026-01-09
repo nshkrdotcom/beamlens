@@ -71,7 +71,6 @@ defmodule Beamlens.Scheduler.Schedule do
     next
   end
 
-  # Maximum timer delay (~49.7 days) due to Erlang's 32-bit signed integer limit
   @max_timer_ms 2_147_483_647
 
   @doc """

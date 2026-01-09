@@ -174,8 +174,6 @@ defmodule Beamlens.Collectors.Beam do
     div(wall_clock_ms, 1000)
   end
 
-  # Top processes with pagination (based on Phoenix LiveDashboard patterns)
-
   @process_keys [
     :memory,
     :reductions,
