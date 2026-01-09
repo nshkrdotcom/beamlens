@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Domain behaviour now requires `callback_docs/0` callback
 - Upgraded Puck from 0.1.0 to 0.2.2 (adds context compaction support)
 - Watchers now run as continuous LLM-driven loops instead of scheduled cron jobs
+- Watcher LLM calls now run asynchronously via `Task.async`, keeping the GenServer responsive to status queries and graceful shutdown
 
 ### Removed
 

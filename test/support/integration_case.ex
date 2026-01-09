@@ -6,7 +6,25 @@ defmodule Beamlens.IntegrationCase do
   using do
     quote do
       @moduletag :integration
+      import Beamlens.IntegrationCase, only: [start_watcher: 2]
     end
+  end
+
+  @doc """
+  Starts a watcher under the test supervisor.
+
+  Uses `start_supervised/2` so the watcher is automatically cleaned up
+  when the test ends. The GenServer is now responsive during LLM calls
+  (via Task.async), so normal shutdown works.
+
+  ## Example
+
+      {:ok, pid} = start_watcher(context, domain_module: MyDomain)
+
+  """
+  def start_watcher(context, opts) do
+    opts = Keyword.put(opts, :client_registry, context.client_registry)
+    start_supervised({Beamlens.Watcher, opts})
   end
 
   setup do

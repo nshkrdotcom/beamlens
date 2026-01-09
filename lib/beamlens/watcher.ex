@@ -57,6 +57,8 @@ defmodule Beamlens.Watcher do
     :client,
     :client_registry,
     :context,
+    :pending_task,
+    :pending_trace_id,
     alerts: [],
     snapshots: [],
     iteration: 0,
@@ -149,23 +151,46 @@ defmodule Beamlens.Watcher do
     })
 
     input = build_input(state.state)
+    context = %{state.context | metadata: Map.put(state.context.metadata, :trace_id, trace_id)}
 
-    case Puck.call(state.client, input, state.context, output_schema: Tools.schema()) do
-      {:ok, response, new_context} ->
-        handle_action(response.content, %{state | context: new_context}, trace_id)
+    task =
+      Task.async(fn ->
+        Puck.call(state.client, input, context, output_schema: Tools.schema())
+      end)
 
-      {:error, reason} ->
-        emit_telemetry(:llm_error, state, %{trace_id: trace_id, reason: reason})
-        {:noreply, %{state | running: false}}
-    end
+    {:noreply, %{state | pending_task: task, pending_trace_id: trace_id}}
   end
 
   @impl true
+  def handle_info({ref, result}, %{pending_task: %Task{ref: ref}} = state) do
+    Process.demonitor(ref, [:flush])
+    state = %{state | pending_task: nil}
+
+    case result do
+      {:ok, response, new_context} ->
+        handle_action(response.content, %{state | context: new_context}, state.pending_trace_id)
+
+      {:error, reason} ->
+        emit_telemetry(:llm_error, state, %{trace_id: state.pending_trace_id, reason: reason})
+        {:noreply, %{state | running: false, pending_trace_id: nil}}
+    end
+  end
+
+  def handle_info({:DOWN, ref, :process, _pid, reason}, %{pending_task: %Task{ref: ref}} = state) do
+    emit_telemetry(:llm_error, state, %{
+      trace_id: state.pending_trace_id,
+      reason: {:task_crashed, reason}
+    })
+
+    {:noreply, %{state | pending_task: nil, pending_trace_id: nil, running: false}}
+  end
+
   def handle_info(:continue_loop, state) do
     {:noreply, state, {:continue, :loop}}
   end
 
-  def handle_info(_msg, state) do
+  def handle_info(msg, state) do
+    emit_telemetry(:unexpected_message, state, %{message: inspect(msg)})
     {:noreply, state}
   end
 
@@ -180,6 +205,14 @@ defmodule Beamlens.Watcher do
     {:reply, status, state}
   end
 
+  @impl true
+  def terminate(_reason, %{pending_task: %Task{} = task} = _state) do
+    Task.shutdown(task, :brutal_kill)
+    :ok
+  end
+
+  def terminate(_reason, _state), do: :ok
+
   defp handle_action(%SetState{state: new_state, reason: reason}, state, trace_id) do
     emit_telemetry(:state_change, state, %{
       trace_id: trace_id,
@@ -188,7 +221,7 @@ defmodule Beamlens.Watcher do
       reason: reason
     })
 
-    new_state = %{state | state: new_state, iteration: state.iteration + 1}
+    new_state = %{state | state: new_state, iteration: state.iteration + 1, pending_trace_id: nil}
     {:noreply, new_state, {:continue, :loop}}
   end
 
@@ -206,14 +239,27 @@ defmodule Beamlens.Watcher do
           alert: alert
         })
 
-        new_state = %{state | alerts: state.alerts ++ [alert], iteration: state.iteration + 1}
+        new_state = %{
+          state
+          | alerts: state.alerts ++ [alert],
+            iteration: state.iteration + 1,
+            pending_trace_id: nil
+        }
+
         {:noreply, new_state, {:continue, :loop}}
 
       {:error, reason} ->
         emit_telemetry(:alert_failed, state, %{trace_id: trace_id, reason: reason})
 
         new_context = add_result(state.context, %{error: reason})
-        new_state = %{state | context: new_context, iteration: state.iteration + 1}
+
+        new_state = %{
+          state
+          | context: new_context,
+            iteration: state.iteration + 1,
+            pending_trace_id: nil
+        }
+
         {:noreply, new_state, {:continue, :loop}}
     end
   end
@@ -227,7 +273,14 @@ defmodule Beamlens.Watcher do
     })
 
     new_context = add_result(state.context, alerts)
-    new_state = %{state | context: new_context, iteration: state.iteration + 1}
+
+    new_state = %{
+      state
+      | context: new_context,
+        iteration: state.iteration + 1,
+        pending_trace_id: nil
+    }
+
     {:noreply, new_state, {:continue, :loop}}
   end
 
@@ -243,7 +296,8 @@ defmodule Beamlens.Watcher do
       state
       | context: new_context,
         snapshots: state.snapshots ++ [snapshot],
-        iteration: state.iteration + 1
+        iteration: state.iteration + 1,
+        pending_trace_id: nil
     }
 
     {:noreply, new_state, {:continue, :loop}}
@@ -259,7 +313,14 @@ defmodule Beamlens.Watcher do
       end
 
     new_context = add_result(state.context, result)
-    new_state = %{state | context: new_context, iteration: state.iteration + 1}
+
+    new_state = %{
+      state
+      | context: new_context,
+        iteration: state.iteration + 1,
+        pending_trace_id: nil
+    }
+
     {:noreply, new_state, {:continue, :loop}}
   end
 
@@ -277,7 +338,14 @@ defmodule Beamlens.Watcher do
     emit_telemetry(:get_snapshots, state, %{trace_id: trace_id, count: length(snapshots)})
 
     new_context = add_result(state.context, snapshots)
-    new_state = %{state | context: new_context, iteration: state.iteration + 1}
+
+    new_state = %{
+      state
+      | context: new_context,
+        iteration: state.iteration + 1,
+        pending_trace_id: nil
+    }
+
     {:noreply, new_state, {:continue, :loop}}
   end
 
@@ -296,7 +364,14 @@ defmodule Beamlens.Watcher do
       end
 
     new_context = add_result(state.context, result)
-    new_state = %{state | context: new_context, iteration: state.iteration + 1}
+
+    new_state = %{
+      state
+      | context: new_context,
+        iteration: state.iteration + 1,
+        pending_trace_id: nil
+    }
+
     {:noreply, new_state, {:continue, :loop}}
   end
 
@@ -305,7 +380,14 @@ defmodule Beamlens.Watcher do
     Process.send_after(self(), :continue_loop, ms)
 
     fresh_context = Context.new(metadata: %{iteration: state.iteration + 1})
-    new_state = %{state | context: fresh_context, iteration: state.iteration + 1}
+
+    new_state = %{
+      state
+      | context: fresh_context,
+        iteration: state.iteration + 1,
+        pending_trace_id: nil
+    }
+
     {:noreply, new_state}
   end
 

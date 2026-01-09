@@ -110,6 +110,10 @@ defmodule Beamlens.Telemetry do
     - Measurements: `%{system_time: integer}`
     - Metadata: `%{watcher: atom(), trace_id: String.t(), reason: String.t()}`
 
+  * `[:beamlens, :watcher, :unexpected_message]` - GenServer received unexpected message
+    - Measurements: `%{system_time: integer}`
+    - Metadata: `%{watcher: atom(), message: String.t()}`
+
   ## Example Handler
 
       :telemetry.attach(
