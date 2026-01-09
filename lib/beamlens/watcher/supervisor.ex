@@ -1,32 +1,33 @@
-defmodule Beamlens.Watchers.Supervisor do
+defmodule Beamlens.Watcher.Supervisor do
   @moduledoc """
   DynamicSupervisor for watcher processes.
 
-  Starts and supervises `Server` processes based on configuration.
-  Each watcher runs independently on its own cron schedule.
+  Starts and supervises watcher processes based on configuration.
+  Each watcher runs a continuous LLM-driven loop.
 
   ## Configuration
 
       config :beamlens,
         watchers: [
-          {:beam, "*/1 * * * *"},
-          [name: :custom, watcher_module: MyApp.CustomWatcher, cron: "*/5 * * * *", config: []]
+          :beam,
+          [name: :custom, domain_module: MyApp.Domain.Custom]
         ]
 
   ## Watcher Specifications
 
   Watchers can be specified in two forms:
 
-    * `{domain, cron}` - Uses built-in watcher for the domain
-    * `[name: atom, watcher_module: module, cron: string, config: keyword]` - Custom watcher
+    * `:domain` - Uses built-in domain module (e.g., `:beam` → `Beamlens.Domain.Beam`)
+    * `[name: atom, domain_module: module]` - Custom domain module
   """
 
   use DynamicSupervisor
 
-  alias Beamlens.Watchers.{BeamWatcher, Server, Status}
+  alias Beamlens.Domain.Beam
+  alias Beamlens.Watcher
 
-  @builtin_watchers %{
-    beam: BeamWatcher
+  @builtin_domains %{
+    beam: Beam
   }
 
   def start_link(opts \\ []) do
@@ -69,44 +70,40 @@ defmodule Beamlens.Watchers.Supervisor do
   """
   def start_watcher(supervisor \\ __MODULE__, spec, client_registry \\ nil)
 
-  def start_watcher(supervisor, {domain, cron}, client_registry)
-      when is_atom(domain) and is_binary(cron) do
-    case Map.fetch(@builtin_watchers, domain) do
+  def start_watcher(supervisor, domain, client_registry) when is_atom(domain) do
+    case Map.fetch(@builtin_domains, domain) do
       {:ok, module} ->
         start_watcher(
           supervisor,
-          [name: domain, watcher_module: module, cron: cron, config: []],
+          [name: domain, domain_module: module],
           client_registry
         )
 
       :error ->
-        {:error, {:unknown_builtin_watcher, domain}}
+        {:error, {:unknown_builtin_domain, domain}}
     end
   end
 
   def start_watcher(supervisor, opts, client_registry) when is_list(opts) do
     name = Keyword.fetch!(opts, :name)
-    watcher_module = Keyword.fetch!(opts, :watcher_module)
-    cron = Keyword.fetch!(opts, :cron)
-    config = Keyword.get(opts, :config, [])
+    domain_module = Keyword.fetch!(opts, :domain_module)
 
-    server_opts = [
-      name: via_registry(name),
-      watcher_module: watcher_module,
-      cron: cron,
-      config: config
-    ]
+    watcher_opts =
+      opts
+      |> Keyword.drop([:name, :domain_module])
+      |> Keyword.merge(
+        name: via_registry(name),
+        domain_module: domain_module
+      )
 
-    server_opts =
+    watcher_opts =
       if client_registry do
-        Keyword.put(server_opts, :client_registry, client_registry)
+        Keyword.put(watcher_opts, :client_registry, client_registry)
       else
-        server_opts
+        watcher_opts
       end
 
-    child_spec = {Server, server_opts}
-
-    DynamicSupervisor.start_child(supervisor, child_spec)
+    DynamicSupervisor.start_child(supervisor, {Watcher, watcher_opts})
   end
 
   @doc """
@@ -128,23 +125,9 @@ defmodule Beamlens.Watchers.Supervisor do
   def list_watchers do
     Registry.select(Beamlens.WatcherRegistry, [{{:"$1", :"$2", :_}, [], [{{:"$1", :"$2"}}]}])
     |> Enum.map(fn {name, pid} ->
-      %Status{} = status = Server.status(pid)
-      %{status | name: name}
+      status = Watcher.status(pid)
+      Map.put(status, :name, name)
     end)
-  end
-
-  @doc """
-  Triggers an immediate check for a watcher by name.
-  """
-  def trigger_watcher(name) do
-    case Registry.lookup(Beamlens.WatcherRegistry, name) do
-      [{pid, _}] ->
-        Server.trigger(pid)
-        :ok
-
-      [] ->
-        {:error, :not_found}
-    end
   end
 
   @doc """
@@ -153,7 +136,7 @@ defmodule Beamlens.Watchers.Supervisor do
   def watcher_status(name) do
     case Registry.lookup(Beamlens.WatcherRegistry, name) do
       [{pid, _}] ->
-        {:ok, Server.status(pid)}
+        {:ok, Watcher.status(pid)}
 
       [] ->
         {:error, :not_found}

@@ -1,89 +1,27 @@
-defmodule Beamlens.Collectors.Beam do
+defmodule Beamlens.Domain.Beam do
   @moduledoc """
-  BEAM VM collector providing core runtime metrics.
+  BEAM VM metrics domain.
+
+  Provides callback functions for collecting BEAM runtime metrics.
+  Used by watchers and can be called directly.
 
   All functions are read-only with zero side effects.
   No PII/PHI exposure - only aggregate system statistics.
   """
 
-  @behaviour Beamlens.Collector
-
-  alias Beamlens.Tool
-
-  @doc """
-  Collects all BEAM metrics in a single call for snapshot-first analysis.
-
-  Returns a map containing all metric categories plus top 10 processes by memory.
-  """
-  def snapshot do
-    %{
-      system_info: system_info(),
-      memory_stats: memory_stats(),
-      process_stats: process_stats(),
-      scheduler_stats: scheduler_stats(),
-      atom_stats: atom_stats(),
-      persistent_terms: persistent_terms(),
-      overview: overview(),
-      top_processes: top_processes(%{limit: 10, sort_by: "memory"})
-    }
-  end
+  @behaviour Beamlens.Domain
 
   @impl true
-  def tools do
-    [
-      %Tool{
-        name: :overview,
-        intent: "get_overview",
-        description:
-          "Get high-level utilization percentages across all categories (call first to identify areas needing investigation)",
-        execute: fn _params -> overview() end
-      },
-      %Tool{
-        name: :system_info,
-        intent: "get_system_info",
-        description: "Get node identity and context (OTP version, uptime, schedulers)",
-        execute: fn _params -> system_info() end
-      },
-      %Tool{
-        name: :memory_stats,
-        intent: "get_memory_stats",
-        description: "Get detailed memory statistics for leak detection",
-        execute: fn _params -> memory_stats() end
-      },
-      %Tool{
-        name: :process_stats,
-        intent: "get_process_stats",
-        description: "Get process/port counts and limits for capacity check",
-        execute: fn _params -> process_stats() end
-      },
-      %Tool{
-        name: :scheduler_stats,
-        intent: "get_scheduler_stats",
-        description: "Get scheduler details and run queues for performance analysis",
-        execute: fn _params -> scheduler_stats() end
-      },
-      %Tool{
-        name: :atom_stats,
-        intent: "get_atom_stats",
-        description: "Get atom table metrics when suspecting atom leaks",
-        execute: fn _params -> atom_stats() end
-      },
-      %Tool{
-        name: :persistent_terms,
-        intent: "get_persistent_terms",
-        description: "Get persistent term usage statistics",
-        execute: fn _params -> persistent_terms() end
-      },
-      %Tool{
-        name: :top_processes,
-        intent: "get_top_processes",
-        description: "Get top processes sorted by memory/queue/reductions with pagination",
-        execute: &top_processes/1
-      }
-    ]
-  end
+  def domain, do: :beam
 
-  defp overview do
+  @doc """
+  High-level utilization percentages for quick health assessment.
+
+  Returns just enough information for an LLM to decide if deeper
+  investigation is needed. Call individual metric functions for details.
+  """
+  @impl true
+  def snapshot do
     memory = :erlang.memory()
     total_mem = memory[:total]
     used_mem = memory[:processes] + memory[:system]
@@ -101,6 +39,25 @@ defmodule Beamlens.Collectors.Beam do
         Float.round(:erlang.system_info(:atom_count) / :erlang.system_info(:atom_limit) * 100, 2),
       scheduler_run_queue: :erlang.statistics(:run_queue),
       schedulers_online: :erlang.system_info(:schedulers_online)
+    }
+  end
+
+  @doc """
+  Returns the Lua sandbox callback map for BEAM metrics.
+
+  These functions are registered with Puck.Sandbox.Eval and can be
+  called from LLM-generated Lua code.
+  """
+  @impl true
+  def callbacks do
+    %{
+      "get_memory" => &memory_stats/0,
+      "get_processes" => &process_stats/0,
+      "get_schedulers" => &scheduler_stats/0,
+      "get_atoms" => &atom_stats/0,
+      "get_system" => &system_info/0,
+      "get_persistent_terms" => &persistent_terms/0,
+      "top_processes" => &top_processes_wrapper/2
     }
   end
 
@@ -167,26 +124,10 @@ defmodule Beamlens.Collectors.Beam do
     }
   end
 
-  defp bytes_to_mb(bytes), do: Float.round(bytes / 1_048_576, 2)
-
-  defp uptime_seconds do
-    {wall_clock_ms, _} = :erlang.statistics(:wall_clock)
-    div(wall_clock_ms, 1000)
-  end
-
-  @process_keys [
-    :memory,
-    :reductions,
-    :message_queue_len,
-    :current_function,
-    :registered_name,
-    :dictionary
-  ]
-
-  defp top_processes(params) do
-    limit = min(Map.get(params, :limit) || 10, 50)
-    offset = Map.get(params, :offset) || 0
-    sort_by = normalize_sort_by(Map.get(params, :sort_by) || "memory")
+  defp top_processes(opts) do
+    limit = min(Map.get(opts, :limit) || 10, 50)
+    offset = Map.get(opts, :offset) || 0
+    sort_by = normalize_sort_by(Map.get(opts, :sort_by) || "memory")
 
     processes =
       Process.list()
@@ -205,6 +146,22 @@ defmodule Beamlens.Collectors.Beam do
       processes: processes
     }
   end
+
+  defp bytes_to_mb(bytes), do: Float.round(bytes / 1_048_576, 2)
+
+  defp uptime_seconds do
+    {wall_clock_ms, _} = :erlang.statistics(:wall_clock)
+    div(wall_clock_ms, 1000)
+  end
+
+  @process_keys [
+    :memory,
+    :reductions,
+    :message_queue_len,
+    :current_function,
+    :registered_name,
+    :dictionary
+  ]
 
   defp process_info(pid) do
     case Process.info(pid, @process_keys) do
@@ -239,4 +196,9 @@ defmodule Beamlens.Collectors.Beam do
 
   defp format_mfa({m, f, a}), do: "#{inspect(m)}.#{f}/#{a}"
   defp format_mfa(_), do: nil
+
+  defp top_processes_wrapper(limit, sort_by)
+       when is_number(limit) and is_binary(sort_by) do
+    top_processes(%{limit: limit, sort_by: sort_by})
+  end
 end

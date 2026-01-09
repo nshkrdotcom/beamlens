@@ -2,28 +2,28 @@ defmodule Beamlens do
   @moduledoc """
   BeamLens - AI-powered BEAM VM health monitoring.
 
-  An orchestrator-workers architecture where specialized **watchers** autonomously
-  monitor BEAM VM metrics on cron schedules, detect anomalies using LLM-based
-  baseline learning, and investigate deeper when issues are found.
+  Specialized **watchers** autonomously monitor BEAM VM metrics using LLM-driven
+  loops, detect anomalies, and fire alerts via telemetry when issues are found.
 
   ## Architecture
 
   ```
   ┌─────────────────────────────────────────────────────────────┐
   │                      Watcher (Autonomous)                   │
-  │  1. Collect snapshot on cron schedule                       │
-  │  2. AnalyzeBaseline → ContinueObserving | Alert | Healthy   │
-  │  3. If Alert: push to AlertQueue, run InvestigateAnomaly    │
-  │  4. Produce WatcherFindings with root cause & recommendations│
+  │  1. LLM controls timing via wait tool                       │
+  │  2. Collects snapshots, analyzes patterns                   │
+  │  3. Fires alerts via telemetry when anomalies detected      │
+  │  4. Maintains state: healthy → observing → warning → critical│
   └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
-              ┌────────────────────────┐
-              │      AlertHandler      │
-              │  - receives alerts     │
-              │  - correlates findings │
-              │  - orchestrates AI     │
-              └────────────────────────┘
+              ┌────────────────────────────┐
+              │     Telemetry Events       │
+              │  [:beamlens, :watcher, *]  │
+              │  - alert_fired             │
+              │  - state_change            │
+              │  - iteration_start         │
+              └────────────────────────────┘
   ```
 
   ## Installation
@@ -41,7 +41,7 @@ defmodule Beamlens do
 
         def start(_type, _args) do
           children = [
-            {Beamlens, watchers: [{:beam, "*/5 * * * *"}]}
+            {Beamlens, watchers: [:beam]}
           ]
 
           Supervisor.start_link(children, strategy: :one_for_one)
@@ -54,9 +54,6 @@ defmodule Beamlens do
 
     * `:watchers` - List of watcher configurations (see below)
     * `:client_registry` - LLM provider configuration (see below)
-    * `:alert_handler` - Alert handler options:
-      * `:trigger` - `:on_alert` (auto-run) or `:manual` (default: `:on_alert`)
-    * `:circuit_breaker` - Circuit breaker options (see below)
 
   ### LLM Provider Configuration
 
@@ -64,7 +61,7 @@ defmodule Beamlens do
   Configure a custom provider via `:client_registry`:
 
       {Beamlens,
-        watchers: [{:beam, "*/5 * * * *"}],
+        watchers: [:beam],
         client_registry: %{
           primary: "Ollama",
           clients: [
@@ -81,53 +78,33 @@ defmodule Beamlens do
 
   ### Watcher Configuration
 
-  Watchers can be specified using tuple shorthand or full keyword lists:
+  Watchers can be specified as atoms or keyword lists:
 
       # Built-in BEAM watcher
-      {:beam, "*/5 * * * *"}
+      :beam
 
-      # Custom watcher
-      [name: :postgres, watcher_module: MyApp.Watchers.Postgres,
-       cron: "*/10 * * * *", config: [repo: MyApp.Repo]]
-
-  ### Example Configuration
-
-      {Beamlens,
-        watchers: [
-          {:beam, "*/1 * * * *"},
-          [name: :postgres, watcher_module: MyApp.Watchers.Postgres,
-           cron: "*/5 * * * *", config: [repo: MyApp.Repo]]
-        ],
-        alert_handler: [
-          trigger: :on_alert
-        ],
-        circuit_breaker: [
-          enabled: true
-        ]}
-
-  ## Manual Usage
-
-      # Trigger a specific watcher manually
-      :ok = Beamlens.trigger_watcher(:beam)
-
-      # Investigate pending alerts (correlate findings across watchers)
-      {:ok, analysis} = Beamlens.investigate()
+      # Custom domain module
+      [name: :postgres, domain_module: MyApp.Domain.Postgres]
 
   ## Runtime API
 
       # List all running watchers
       Beamlens.list_watchers()
 
-      # Check for pending alerts
-      Beamlens.pending_alerts?()
-
-      # Trigger specific watcher
-      Beamlens.trigger_watcher(:beam)
+      # Get status of a specific watcher
+      Beamlens.watcher_status(:beam)
 
   ## Telemetry Events
 
   BeamLens emits telemetry events for observability. See `Beamlens.Telemetry`
   for the full list of events.
+
+  Subscribe to alert events:
+
+      :telemetry.attach("beamlens-alerts", [:beamlens, :watcher, :alert_fired], fn
+        _event, _measurements, metadata, _config ->
+          IO.inspect(metadata, label: "Alert fired")
+      end, nil)
   """
 
   @doc false
@@ -145,79 +122,20 @@ defmodule Beamlens do
   end
 
   @doc """
-  Investigates pending watcher alerts using the agent's tool-calling loop.
-
-  Takes all alerts from the queue and runs an investigation to correlate
-  findings and analyze deeper.
-
-  Returns `{:ok, analysis}` if alerts were processed,
-  `{:ok, :no_alerts}` if no alerts were pending.
-
-  ## Options
-
-    * `:trace_id` - Correlation ID for telemetry (auto-generated if not provided)
-  """
-  def investigate(opts \\ []) do
-    Beamlens.AlertHandler.investigate(Beamlens.AlertHandler, opts)
-  end
-
-  @doc """
   Lists all running watchers with their status.
 
   Returns a list of maps with watcher information including:
     * `:name` - Watcher name
     * `:watcher` - Domain being monitored
-    * `:cron` - Cron schedule
-    * `:next_run_at` - Next scheduled run
-    * `:last_run_at` - Last run time
-    * `:run_count` - Number of times the watcher has run
+    * `:state` - Current watcher state (healthy, observing, warning, critical)
+    * `:running` - Whether the watcher loop is running
   """
-  defdelegate list_watchers(), to: Beamlens.Watchers.Supervisor
-
-  @doc """
-  Triggers an immediate check for a specific watcher.
-
-  Useful for testing or manual intervention.
-
-  Returns `:ok` on success, `{:error, :not_found}` if watcher doesn't exist.
-  """
-  defdelegate trigger_watcher(name), to: Beamlens.Watchers.Supervisor
+  defdelegate list_watchers(), to: Beamlens.Watcher.Supervisor
 
   @doc """
   Gets the status of a specific watcher.
 
   Returns `{:ok, status}` on success, `{:error, :not_found}` if watcher doesn't exist.
   """
-  defdelegate watcher_status(name), to: Beamlens.Watchers.Supervisor
-
-  @doc """
-  Checks if there are pending alerts to investigate.
-  """
-  defdelegate pending_alerts?(), to: Beamlens.AlertQueue, as: :pending?
-
-  @doc """
-  Returns the current circuit breaker state.
-
-  ## Example
-
-      Beamlens.circuit_breaker_state()
-      #=> %{
-      #=>   state: :closed,
-      #=>   failure_count: 0,
-      #=>   success_count: 0,
-      #=>   failure_threshold: 5,
-      #=>   reset_timeout: 30000,
-      #=>   success_threshold: 2,
-      #=>   last_failure_at: nil,
-      #=>   last_failure_reason: nil
-      #=> }
-  """
-  defdelegate circuit_breaker_state(), to: Beamlens.CircuitBreaker, as: :get_state
-
-  @doc """
-  Resets the circuit breaker to closed state.
-
-  Use with caution - primarily for manual recovery after resolving issues.
-  """
-  defdelegate reset_circuit_breaker(), to: Beamlens.CircuitBreaker, as: :reset
+  defdelegate watcher_status(name), to: Beamlens.Watcher.Supervisor
 end

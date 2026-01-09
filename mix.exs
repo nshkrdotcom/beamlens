@@ -83,7 +83,13 @@ defmodule Beamlens.MixProject do
   defp docs do
     [
       main: "readme",
-      extras: ["README.md", "docs/architecture.md", "CHANGELOG.md", "LICENSE"],
+      extras: [
+        "README.md",
+        "docs/architecture.md",
+        "docs/providers.md",
+        "CHANGELOG.md",
+        "LICENSE"
+      ],
       source_ref: "v#{@version}",
       formatters: ["html"],
       authors: ["Bradley Golden"],
@@ -116,54 +122,22 @@ defmodule Beamlens.MixProject do
       groups_for_modules: [
         Core: [
           Beamlens,
-          Beamlens.Agent,
-          Beamlens.Judge,
-          Beamlens.HealthAnalysis
+          Beamlens.Supervisor
         ],
-        Watchers: [
-          Beamlens.Watchers.Watcher,
-          Beamlens.Watchers.Server,
-          Beamlens.Watchers.Status,
-          Beamlens.Watchers.Supervisor,
-          Beamlens.Watchers.BeamWatcher,
-          Beamlens.Watchers.Beam.BeamObservation,
-          Beamlens.Watchers.ObservationHistory
+        Watcher: [
+          Beamlens.Watcher,
+          Beamlens.Watcher.Supervisor,
+          Beamlens.Watcher.Alert,
+          Beamlens.Watcher.Snapshot,
+          Beamlens.Watcher.Tools
         ],
-        Baseline: [
-          Beamlens.Watchers.Baseline,
-          Beamlens.Watchers.Baseline.Analyzer,
-          Beamlens.Watchers.Baseline.Context,
-          Beamlens.Watchers.Baseline.Decision,
-          Beamlens.Watchers.Baseline.Investigator
+        Domain: [
+          Beamlens.Domain,
+          Beamlens.Domain.Beam
         ],
-        Alerts: [
-          Beamlens.Alert,
-          Beamlens.AlertQueue,
-          Beamlens.AlertHandler
-        ],
-        Events: [
-          Beamlens.Events,
-          Beamlens.Events.JudgeCall,
-          Beamlens.Events.LLMCall,
-          Beamlens.Events.ToolCall
-        ],
-        Scheduling: [
-          Beamlens.Scheduler,
-          Beamlens.Scheduler.Schedule
-        ],
-        Collectors: [
-          Beamlens.Collector,
-          Beamlens.Collectors.Beam,
-          Beamlens.Tool,
-          Beamlens.Tools
-        ],
-        Observability: [
+        Telemetry: [
           Beamlens.Telemetry,
           Beamlens.Telemetry.Hooks
-        ],
-        Infrastructure: [
-          Beamlens.CircuitBreaker,
-          Beamlens.BAML
         ]
       ]
     ]

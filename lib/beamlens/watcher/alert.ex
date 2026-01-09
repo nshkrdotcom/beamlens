@@ -1,14 +1,10 @@
-defmodule Beamlens.Alert do
+defmodule Beamlens.Watcher.Alert do
   @moduledoc """
   Immediate notification from a watcher about detected anomaly.
 
-  Alerts flow from watchers (workers) to the orchestrator. Each alert contains
-  all evidence needed to investigate an anomaly, including the frozen snapshot
-  at the time of detection.
-
-  This follows the **Orchestrator-Workers** pattern from Anthropic's agent
-  architecture guidelines, where workers detect anomalies and alert UP to
-  the orchestrator for correlation and investigation.
+  Alerts are emitted via telemetry events when a watcher detects an anomaly.
+  Each alert contains all evidence needed to investigate, including referenced
+  snapshots that were captured during investigation.
 
   ## Fields
 
@@ -17,23 +13,23 @@ defmodule Beamlens.Alert do
     * `:anomaly_type` - Classification of the anomaly detected (string from LLM)
     * `:severity` - `:info`, `:warning`, or `:critical`
     * `:summary` - Brief description of the anomaly
-    * `:snapshot` - Frozen metrics at time of detection
+    * `:snapshots` - List of referenced snapshots captured during investigation
     * `:detected_at` - When the anomaly was detected
     * `:node` - Node where the anomaly was detected
     * `:trace_id` - Correlation ID for telemetry
 
   ## Example
 
-      %Beamlens.Alert{
+      %Beamlens.Watcher.Alert{
         id: "a1b2c3d4",
         watcher: :beam,
         anomaly_type: "memory_elevated",
         severity: :warning,
         summary: "Memory utilization at 72%, exceeding 60% warning threshold",
-        snapshot: %{
-          memory_stats: %{total_mb: 1024, processes_mb: 400, ...},
-          overview: %{memory_utilization_pct: 72.0, ...}
-        },
+        snapshots: [
+          %{id: "abc123", captured_at: ~U[2024-01-06 10:30:00Z], data: %{...}},
+          %{id: "def456", captured_at: ~U[2024-01-06 10:30:30Z], data: %{...}}
+        ],
         detected_at: ~U[2024-01-06 10:30:00Z],
         node: :myapp@host,
         trace_id: "xyz789"
@@ -48,7 +44,7 @@ defmodule Beamlens.Alert do
           anomaly_type: String.t(),
           severity: severity(),
           summary: String.t(),
-          snapshot: map(),
+          snapshots: [map()],
           detected_at: DateTime.t(),
           node: atom(),
           trace_id: String.t()
@@ -61,7 +57,7 @@ defmodule Beamlens.Alert do
     :anomaly_type,
     :severity,
     :summary,
-    :snapshot,
+    :snapshots,
     :detected_at,
     :node,
     :trace_id
@@ -72,7 +68,7 @@ defmodule Beamlens.Alert do
     :anomaly_type,
     :severity,
     :summary,
-    :snapshot,
+    :snapshots,
     :detected_at,
     :node,
     :trace_id
@@ -87,7 +83,7 @@ defmodule Beamlens.Alert do
     * `:anomaly_type` - Classification string (e.g., "memory_elevated")
     * `:severity` - One of :info, :warning, :critical
     * `:summary` - Brief description string
-    * `:snapshot` - Map of frozen metrics
+    * `:snapshots` - List of snapshot maps
 
   ## Optional Attributes
 
@@ -103,7 +99,7 @@ defmodule Beamlens.Alert do
         anomaly_type: "memory_elevated",
         severity: :warning,
         summary: "Memory at 72%",
-        snapshot: Beam.snapshot()
+        snapshots: [snapshot1, snapshot2]
       })
   """
   def new(attrs) when is_map(attrs) do
@@ -113,7 +109,7 @@ defmodule Beamlens.Alert do
       anomaly_type: Map.fetch!(attrs, :anomaly_type),
       severity: Map.fetch!(attrs, :severity),
       summary: Map.fetch!(attrs, :summary),
-      snapshot: Map.fetch!(attrs, :snapshot),
+      snapshots: Map.fetch!(attrs, :snapshots),
       detected_at: Map.get(attrs, :detected_at, DateTime.utc_now()),
       node: Map.get(attrs, :node, Node.self()),
       trace_id: Map.get(attrs, :trace_id, generate_trace_id())

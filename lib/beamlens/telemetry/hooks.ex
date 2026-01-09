@@ -7,7 +7,7 @@ defmodule Beamlens.Telemetry.Hooks do
 
   ## Usage
 
-  The hooks are automatically attached when using `Beamlens.Agent.run/1`.
+  The hooks are automatically attached when building the Puck client.
   Trace context is read from `Puck.Context.metadata`:
 
       context = Context.new(metadata: %{

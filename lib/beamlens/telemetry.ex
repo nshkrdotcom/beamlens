@@ -2,7 +2,7 @@ defmodule Beamlens.Telemetry do
   @moduledoc """
   Telemetry events emitted by BeamLens.
 
-  All events include a `trace_id` for correlating events within a single agent run.
+  All events include a `trace_id` for correlating events within a single watcher run.
   Events follow the standard `:start`, `:stop`, `:exception` lifecycle pattern
   used by Phoenix, Oban, and other Elixir libraries.
 
@@ -14,22 +14,6 @@ defmodule Beamlens.Telemetry do
 
   **Exception events** include `%{duration: integer}` measurement and metadata:
   `%{kind: :error | :throw | :exit, reason: term(), stacktrace: list()}`.
-
-  ## Agent Events
-
-  * `[:beamlens, :agent, :start]` - Agent run starting
-    - Measurements: `%{system_time: integer}`
-    - Metadata: `%{trace_id: String.t(), node: atom()}`
-
-  * `[:beamlens, :agent, :stop]` - Agent run completed
-    - Measurements: `%{duration: integer}`
-    - Metadata: `%{trace_id: String.t(), node: atom(), status: atom(),
-                   analysis: HealthAnalysis.t()}`
-
-  * `[:beamlens, :agent, :exception]` - Agent run failed
-    - Measurements: `%{duration: integer}`
-    - Metadata: `%{trace_id: String.t(), node: atom(),
-                   kind: atom(), reason: term(), stacktrace: list()}`
 
   ## LLM Events
 
@@ -64,137 +48,75 @@ defmodule Beamlens.Telemetry do
     - Metadata: `%{trace_id: String.t(), iteration: integer, tool_name: String.t(),
                    kind: atom(), reason: term(), stacktrace: list()}`
 
-  ## Judge Events
-
-  * `[:beamlens, :judge, :start]` - Judge review starting
-    - Measurements: `%{system_time: integer}`
-    - Metadata: `%{trace_id: String.t(), attempt: integer}`
-
-  * `[:beamlens, :judge, :stop]` - Judge review completed
-    - Measurements: `%{duration: integer}`
-    - Metadata: `%{trace_id: String.t(), attempt: integer, verdict: atom()}`
-
-  * `[:beamlens, :judge, :exception]` - Judge review failed
-    - Measurements: `%{duration: integer}`
-    - Metadata: `%{trace_id: String.t(), attempt: integer,
-                   kind: atom(), reason: term(), stacktrace: list()}`
-
-  ## Schedule Events
-
-  * `[:beamlens, :schedule, :triggered]` - Schedule triggered (timer or manual)
-    - Measurements: `%{system_time: integer}`
-    - Metadata: `%{name: atom(), cron: String.t(), source: :scheduled | :manual}`
-
-  * `[:beamlens, :schedule, :skipped]` - Schedule skipped (already running)
-    - Measurements: `%{system_time: integer}`
-    - Metadata: `%{name: atom(), cron: String.t(), reason: :already_running}`
-
-  * `[:beamlens, :schedule, :completed]` - Scheduled task completed successfully
-    - Measurements: `%{system_time: integer}`
-    - Metadata: `%{name: atom(), cron: String.t(), reason: :normal}`
-
-  * `[:beamlens, :schedule, :failed]` - Scheduled task crashed
-    - Measurements: `%{system_time: integer}`
-    - Metadata: `%{name: atom(), cron: String.t(), reason: term()}`
-
   ## Watcher Events
 
   * `[:beamlens, :watcher, :started]` - Watcher server started
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{watcher: atom(), cron: String.t()}`
+    - Metadata: `%{watcher: atom()}`
 
-  * `[:beamlens, :watcher, :triggered]` - Watcher check triggered
+  * `[:beamlens, :watcher, :iteration_start]` - Watcher iteration starting
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{watcher: atom(), cron: String.t(), source: :scheduled | :manual}`
+    - Metadata: `%{watcher: atom(), trace_id: String.t(), iteration: integer, watcher_state: atom()}`
 
-  * `[:beamlens, :watcher, :skipped]` - Watcher check skipped (already running)
+  * `[:beamlens, :watcher, :state_change]` - Watcher state changed
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{watcher: atom(), cron: String.t(), reason: :already_running, source: atom()}`
+    - Metadata: `%{watcher: atom(), trace_id: String.t(), from: atom(), to: atom(), reason: String.t()}`
 
-  * `[:beamlens, :watcher, :check_start]` - Watcher check starting
+  * `[:beamlens, :watcher, :alert_fired]` - Watcher fired an alert
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{watcher: atom(), cron: String.t()}`
+    - Metadata: `%{watcher: atom(), trace_id: String.t(), alert: Alert.t()}`
 
-  * `[:beamlens, :watcher, :check_stop]` - Watcher check completed
+  * `[:beamlens, :watcher, :get_alerts]` - Watcher retrieved alerts
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{watcher: atom(), cron: String.t()}`
+    - Metadata: `%{watcher: atom(), trace_id: String.t(), count: integer}`
 
-  * `[:beamlens, :watcher, :baseline_collecting]` - Still collecting baseline observations
+  * `[:beamlens, :watcher, :take_snapshot]` - Watcher captured a snapshot
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{watcher: atom(), cron: String.t(), observation_count: integer,
-                   min_required: integer}`
+    - Metadata: `%{watcher: atom(), trace_id: String.t(), snapshot_id: String.t()}`
 
-  * `[:beamlens, :watcher, :baseline_analysis_start]` - Baseline analysis starting
+  * `[:beamlens, :watcher, :get_snapshot]` - Watcher retrieved a snapshot
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{watcher: atom(), cron: String.t(), trace_id: String.t()}`
+    - Metadata: `%{watcher: atom(), trace_id: String.t(), snapshot_id: String.t()}`
 
-  * `[:beamlens, :watcher, :baseline_analysis_stop]` - Baseline analysis completed
+  * `[:beamlens, :watcher, :get_snapshots]` - Watcher retrieved multiple snapshots
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{watcher: atom(), cron: String.t(), trace_id: String.t(), success: boolean()}`
+    - Metadata: `%{watcher: atom(), trace_id: String.t(), count: integer}`
 
-  * `[:beamlens, :watcher, :baseline_continue_observing]` - LLM decided to continue observing
+  * `[:beamlens, :watcher, :execute_start]` - Watcher Lua execution starting
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{watcher: atom(), cron: String.t(), trace_id: String.t(), confidence: atom()}`
+    - Metadata: `%{watcher: atom(), trace_id: String.t()}`
 
-  * `[:beamlens, :watcher, :baseline_anomaly_detected]` - Anomaly detected and reported
+  * `[:beamlens, :watcher, :execute_complete]` - Watcher Lua execution completed
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{watcher: atom(), cron: String.t(), trace_id: String.t(), alert_id: String.t(),
-                   severity: atom(), anomaly_type: String.t(), confidence: atom()}`
+    - Metadata: `%{watcher: atom(), trace_id: String.t()}`
 
-  * `[:beamlens, :watcher, :baseline_anomaly_suppressed]` - Anomaly detected but suppressed (cooldown)
+  * `[:beamlens, :watcher, :execute_error]` - Watcher Lua execution failed
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{watcher: atom(), cron: String.t(), trace_id: String.t(),
-                   anomaly_type: String.t(), category: atom(), reason: :cooldown}`
+    - Metadata: `%{watcher: atom(), trace_id: String.t(), reason: term()}`
 
-  * `[:beamlens, :watcher, :baseline_healthy]` - System determined to be healthy
+  * `[:beamlens, :watcher, :wait]` - Watcher sleeping
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{watcher: atom(), cron: String.t(), trace_id: String.t(),
-                   confidence: atom(), summary: String.t()}`
+    - Metadata: `%{watcher: atom(), trace_id: String.t(), ms: integer}`
 
-  ## Watcher Investigation Events
-
-  * `[:beamlens, :watcher, :investigation, :start]` - Investigation loop starting
+  * `[:beamlens, :watcher, :llm_error]` - Watcher LLM call failed
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{trace_id: String.t(), alert_id: String.t()}`
+    - Metadata: `%{watcher: atom(), trace_id: String.t(), reason: term()}`
 
-  * `[:beamlens, :watcher, :investigation, :complete]` - Investigation completed with findings
+  * `[:beamlens, :watcher, :loop_stopped]` - Watcher loop stopped normally
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{trace_id: String.t(), anomaly_type: String.t(),
-                   severity: atom(), confidence: atom()}`
+    - Metadata: `%{watcher: atom(), final_state: atom()}`
 
-  * `[:beamlens, :watcher, :investigation, :tool_call]` - Investigation tool executed
+  * `[:beamlens, :watcher, :alert_failed]` - Alert creation failed
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{trace_id: String.t(), tool: String.t(), iteration: integer}`
-
-  * `[:beamlens, :watcher, :investigation, :error]` - Investigation failed
-    - Measurements: `%{system_time: integer}`
-    - Metadata: `%{trace_id: String.t(), reason: term()}`
-
-  * `[:beamlens, :watcher, :investigation, :timeout]` - Investigation timed out
-    - Measurements: `%{system_time: integer}`
-    - Metadata: `%{trace_id: String.t()}`
-
-  ## Alert Handler Events
-
-  * `[:beamlens, :alert_handler, :started]` - AlertHandler server started
-    - Measurements: `%{system_time: integer}`
-    - Metadata: `%{trigger_mode: :on_alert | :manual}`
-
-  * `[:beamlens, :alert_handler, :investigation, :complete]` - Investigation finished
-    - Measurements: `%{system_time: integer}`
-    - Metadata: `%{status: atom()}`
-
-  * `[:beamlens, :alert_handler, :investigation, :error]` - Investigation failed
-    - Measurements: `%{system_time: integer}`
-    - Metadata: `%{reason: term()}`
+    - Metadata: `%{watcher: atom(), trace_id: String.t(), reason: String.t()}`
 
   ## Example Handler
 
       :telemetry.attach(
         "beamlens-alerts",
-        [:beamlens, :agent, :stop],
-        fn _event, _measurements, %{status: :critical} = metadata, _config ->
-          Logger.error("BeamLens critical: \#{metadata.analysis.summary}")
+        [:beamlens, :watcher, :alert_fired],
+        fn _event, _measurements, metadata, _config ->
+          Logger.warning("BeamLens alert: \#{metadata.alert.summary}")
         end,
         nil
       )
@@ -214,59 +136,35 @@ defmodule Beamlens.Telemetry do
   """
   def event_names do
     [
-      [:beamlens, :agent, :start],
-      [:beamlens, :agent, :stop],
-      [:beamlens, :agent, :exception],
       [:beamlens, :llm, :start],
       [:beamlens, :llm, :stop],
       [:beamlens, :llm, :exception],
       [:beamlens, :tool, :start],
       [:beamlens, :tool, :stop],
       [:beamlens, :tool, :exception],
-      [:beamlens, :judge, :start],
-      [:beamlens, :judge, :stop],
-      [:beamlens, :judge, :exception],
-      [:beamlens, :schedule, :triggered],
-      [:beamlens, :schedule, :skipped],
-      [:beamlens, :schedule, :completed],
-      [:beamlens, :schedule, :failed],
       [:beamlens, :watcher, :started],
-      [:beamlens, :watcher, :triggered],
-      [:beamlens, :watcher, :skipped],
-      [:beamlens, :watcher, :check_start],
-      [:beamlens, :watcher, :check_stop],
-      [:beamlens, :watcher, :baseline_collecting],
-      [:beamlens, :watcher, :baseline_analysis_start],
-      [:beamlens, :watcher, :baseline_analysis_stop],
-      [:beamlens, :watcher, :baseline_continue_observing],
-      [:beamlens, :watcher, :baseline_anomaly_detected],
-      [:beamlens, :watcher, :baseline_anomaly_suppressed],
-      [:beamlens, :watcher, :baseline_healthy],
-      [:beamlens, :watcher, :investigation, :start],
-      [:beamlens, :watcher, :investigation, :complete],
-      [:beamlens, :watcher, :investigation, :tool_call],
-      [:beamlens, :watcher, :investigation, :error],
-      [:beamlens, :watcher, :investigation, :timeout],
-      [:beamlens, :alert_handler, :started],
-      [:beamlens, :alert_handler, :investigation, :complete],
-      [:beamlens, :alert_handler, :investigation, :error],
-      [:beamlens, :circuit_breaker, :state_change],
-      [:beamlens, :circuit_breaker, :rejected]
+      [:beamlens, :watcher, :iteration_start],
+      [:beamlens, :watcher, :state_change],
+      [:beamlens, :watcher, :alert_fired],
+      [:beamlens, :watcher, :alert_failed],
+      [:beamlens, :watcher, :get_alerts],
+      [:beamlens, :watcher, :take_snapshot],
+      [:beamlens, :watcher, :get_snapshot],
+      [:beamlens, :watcher, :get_snapshots],
+      [:beamlens, :watcher, :execute_start],
+      [:beamlens, :watcher, :execute_complete],
+      [:beamlens, :watcher, :execute_error],
+      [:beamlens, :watcher, :wait],
+      [:beamlens, :watcher, :llm_error],
+      [:beamlens, :watcher, :loop_stopped]
     ]
   end
 
   @doc """
-  Generates a unique trace ID for an agent run.
+  Generates a unique trace ID for a watcher run.
   """
   def generate_trace_id do
     :crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower)
-  end
-
-  @doc """
-  Executes a span for agent run with telemetry events.
-  """
-  def span(metadata, fun) do
-    :telemetry.span([:beamlens, :agent], metadata, fun)
   end
 
   @doc """
@@ -341,43 +239,6 @@ defmodule Beamlens.Telemetry do
   def emit_tool_exception(metadata, error, start_time, kind \\ :error, stacktrace \\ []) do
     :telemetry.execute(
       [:beamlens, :tool, :exception],
-      %{duration: System.monotonic_time() - start_time},
-      Map.merge(metadata, %{kind: kind, reason: error, stacktrace: stacktrace})
-    )
-  end
-
-  @doc """
-  Emits a judge start event.
-  """
-  def emit_judge_start(metadata) do
-    :telemetry.execute(
-      [:beamlens, :judge, :start],
-      %{system_time: System.system_time()},
-      metadata
-    )
-  end
-
-  @doc """
-  Emits a judge stop event with the verdict and duration.
-
-  `start_time` should be captured via `System.monotonic_time()` before judge call.
-  """
-  def emit_judge_stop(metadata, judge_event, start_time) do
-    :telemetry.execute(
-      [:beamlens, :judge, :stop],
-      %{duration: System.monotonic_time() - start_time},
-      Map.put(metadata, :verdict, judge_event.verdict)
-    )
-  end
-
-  @doc """
-  Emits a judge exception event with duration and exception details.
-
-  `start_time` should be captured via `System.monotonic_time()` before judge call.
-  """
-  def emit_judge_exception(metadata, error, start_time, kind \\ :error, stacktrace \\ []) do
-    :telemetry.execute(
-      [:beamlens, :judge, :exception],
       %{duration: System.monotonic_time() - start_time},
       Map.merge(metadata, %{kind: kind, reason: error, stacktrace: stacktrace})
     )
