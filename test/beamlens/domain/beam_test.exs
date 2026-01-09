@@ -38,31 +38,31 @@ defmodule Beamlens.Domain.BeamTest do
       callbacks = Beam.callbacks()
 
       assert is_map(callbacks)
-      assert Map.has_key?(callbacks, "get_memory")
-      assert Map.has_key?(callbacks, "get_processes")
-      assert Map.has_key?(callbacks, "get_schedulers")
-      assert Map.has_key?(callbacks, "get_atoms")
-      assert Map.has_key?(callbacks, "get_system")
-      assert Map.has_key?(callbacks, "get_persistent_terms")
-      assert Map.has_key?(callbacks, "top_processes")
+      assert Map.has_key?(callbacks, "beam_get_memory")
+      assert Map.has_key?(callbacks, "beam_get_processes")
+      assert Map.has_key?(callbacks, "beam_get_schedulers")
+      assert Map.has_key?(callbacks, "beam_get_atoms")
+      assert Map.has_key?(callbacks, "beam_get_system")
+      assert Map.has_key?(callbacks, "beam_get_persistent_terms")
+      assert Map.has_key?(callbacks, "beam_top_processes")
     end
 
     test "callbacks are functions" do
       callbacks = Beam.callbacks()
 
-      assert is_function(callbacks["get_memory"], 0)
-      assert is_function(callbacks["get_processes"], 0)
-      assert is_function(callbacks["get_schedulers"], 0)
-      assert is_function(callbacks["get_atoms"], 0)
-      assert is_function(callbacks["get_system"], 0)
-      assert is_function(callbacks["get_persistent_terms"], 0)
-      assert is_function(callbacks["top_processes"], 2)
+      assert is_function(callbacks["beam_get_memory"], 0)
+      assert is_function(callbacks["beam_get_processes"], 0)
+      assert is_function(callbacks["beam_get_schedulers"], 0)
+      assert is_function(callbacks["beam_get_atoms"], 0)
+      assert is_function(callbacks["beam_get_system"], 0)
+      assert is_function(callbacks["beam_get_persistent_terms"], 0)
+      assert is_function(callbacks["beam_top_processes"], 2)
     end
   end
 
-  describe "get_system callback" do
+  describe "beam_get_system callback" do
     test "returns system context" do
-      info = Beam.callbacks()["get_system"].()
+      info = Beam.callbacks()["beam_get_system"].()
 
       assert is_binary(info.node)
       assert is_binary(info.otp_release)
@@ -72,9 +72,9 @@ defmodule Beamlens.Domain.BeamTest do
     end
   end
 
-  describe "get_memory callback" do
+  describe "beam_get_memory callback" do
     test "returns memory in MB" do
-      stats = Beam.callbacks()["get_memory"].()
+      stats = Beam.callbacks()["beam_get_memory"].()
 
       assert is_float(stats.total_mb)
       assert is_float(stats.processes_mb)
@@ -85,14 +85,14 @@ defmodule Beamlens.Domain.BeamTest do
     end
 
     test "total is positive" do
-      stats = Beam.callbacks()["get_memory"].()
+      stats = Beam.callbacks()["beam_get_memory"].()
       assert stats.total_mb > 0
     end
   end
 
-  describe "get_processes callback" do
+  describe "beam_get_processes callback" do
     test "returns counts and limits" do
-      stats = Beam.callbacks()["get_processes"].()
+      stats = Beam.callbacks()["beam_get_processes"].()
 
       assert is_integer(stats.process_count)
       assert is_integer(stats.process_limit)
@@ -101,14 +101,14 @@ defmodule Beamlens.Domain.BeamTest do
     end
 
     test "count is less than limit" do
-      stats = Beam.callbacks()["get_processes"].()
+      stats = Beam.callbacks()["beam_get_processes"].()
       assert stats.process_count < stats.process_limit
     end
   end
 
-  describe "get_schedulers callback" do
+  describe "beam_get_schedulers callback" do
     test "returns scheduler information" do
-      stats = Beam.callbacks()["get_schedulers"].()
+      stats = Beam.callbacks()["beam_get_schedulers"].()
 
       assert is_integer(stats.schedulers)
       assert is_integer(stats.schedulers_online)
@@ -118,9 +118,9 @@ defmodule Beamlens.Domain.BeamTest do
     end
   end
 
-  describe "get_atoms callback" do
+  describe "beam_get_atoms callback" do
     test "returns atom table metrics" do
-      stats = Beam.callbacks()["get_atoms"].()
+      stats = Beam.callbacks()["beam_get_atoms"].()
 
       assert is_integer(stats.atom_count)
       assert is_integer(stats.atom_limit)
@@ -129,18 +129,18 @@ defmodule Beamlens.Domain.BeamTest do
     end
   end
 
-  describe "get_persistent_terms callback" do
+  describe "beam_get_persistent_terms callback" do
     test "returns persistent term usage" do
-      stats = Beam.callbacks()["get_persistent_terms"].()
+      stats = Beam.callbacks()["beam_get_persistent_terms"].()
 
       assert is_integer(stats.count)
       assert is_float(stats.memory_mb)
     end
   end
 
-  describe "top_processes callback" do
+  describe "beam_top_processes callback" do
     test "returns top processes with limit and sort" do
-      result = Beam.callbacks()["top_processes"].(10, "memory")
+      result = Beam.callbacks()["beam_top_processes"].(10, "memory")
 
       assert is_integer(result.total_processes)
       assert result.showing <= 10
@@ -150,20 +150,20 @@ defmodule Beamlens.Domain.BeamTest do
     end
 
     test "respects limit" do
-      result = Beam.callbacks()["top_processes"].(5, "memory")
+      result = Beam.callbacks()["beam_top_processes"].(5, "memory")
 
       assert result.showing <= 5
       assert result.limit == 5
     end
 
     test "caps limit at 50" do
-      result = Beam.callbacks()["top_processes"].(100, "memory")
+      result = Beam.callbacks()["beam_top_processes"].(100, "memory")
 
       assert result.limit == 50
     end
 
     test "process entries have expected fields" do
-      result = Beam.callbacks()["top_processes"].(1, "memory")
+      result = Beam.callbacks()["beam_top_processes"].(1, "memory")
 
       if result.showing > 0 do
         [proc | _] = result.processes
@@ -175,21 +175,42 @@ defmodule Beamlens.Domain.BeamTest do
     end
 
     test "supports sort_by memory" do
-      result = Beam.callbacks()["top_processes"].(5, "memory")
+      result = Beam.callbacks()["beam_top_processes"].(5, "memory")
 
       assert result.sort_by == "memory_kb"
     end
 
     test "supports sort_by message_queue" do
-      result = Beam.callbacks()["top_processes"].(5, "message_queue")
+      result = Beam.callbacks()["beam_top_processes"].(5, "message_queue")
 
       assert result.sort_by == "message_queue"
     end
 
     test "supports sort_by reductions" do
-      result = Beam.callbacks()["top_processes"].(5, "reductions")
+      result = Beam.callbacks()["beam_top_processes"].(5, "reductions")
 
       assert result.sort_by == "reductions"
+    end
+  end
+
+  describe "callback_docs/0" do
+    test "returns non-empty string" do
+      docs = Beam.callback_docs()
+
+      assert is_binary(docs)
+      assert String.length(docs) > 0
+    end
+
+    test "documents all callbacks" do
+      docs = Beam.callback_docs()
+
+      assert docs =~ "beam_get_memory"
+      assert docs =~ "beam_get_processes"
+      assert docs =~ "beam_get_schedulers"
+      assert docs =~ "beam_get_atoms"
+      assert docs =~ "beam_get_system"
+      assert docs =~ "beam_get_persistent_terms"
+      assert docs =~ "beam_top_processes"
     end
   end
 end

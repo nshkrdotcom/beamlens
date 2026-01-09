@@ -41,4 +41,5 @@ defmodule Beamlens.Domain do
   @callback domain() :: atom()
   @callback snapshot() :: map()
   @callback callbacks() :: map()
+  @callback callback_docs() :: String.t()
 end

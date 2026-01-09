@@ -23,11 +23,15 @@ defmodule Beamlens.Watcher.Supervisor do
 
   use DynamicSupervisor
 
-  alias Beamlens.Domain.Beam
+  alias Beamlens.Domain.{Beam, Ets, Gc, Ports, Sup}
   alias Beamlens.Watcher
 
   @builtin_domains %{
-    beam: Beam
+    beam: Beam,
+    ets: Ets,
+    gc: Gc,
+    ports: Ports,
+    sup: Sup
   }
 
   def start_link(opts \\ []) do

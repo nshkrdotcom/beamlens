@@ -27,6 +27,10 @@ defmodule Beamlens.WatcherTest do
         "get_test_value" => fn -> 42 end
       }
     end
+
+    def callback_docs do
+      "### get_test_value()\nReturns 42"
+    end
   end
 
   defp start_watcher_without_loop(opts \\ []) do

@@ -22,6 +22,8 @@ defmodule Beamlens.Watcher.SupervisorTest do
     end
 
     def callbacks, do: %{}
+
+    def callback_docs, do: "Test domain callbacks"
   end
 
   setup do

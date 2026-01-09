@@ -111,7 +111,7 @@ defmodule Beamlens.Watcher do
     name = Keyword.get(opts, :name)
     client_registry = Keyword.get(opts, :client_registry)
     start_loop = Keyword.get(opts, :start_loop, true)
-    client = build_puck_client(client_registry)
+    client = build_puck_client(domain_module, client_registry)
 
     state = %__MODULE__{
       name: name,
@@ -355,11 +355,19 @@ defmodule Beamlens.Watcher do
     end
   end
 
-  defp build_puck_client(client_registry) do
+  defp build_puck_client(domain_module, client_registry) do
+    callback_docs = domain_module.callback_docs()
+
     backend_config =
       %{
         function: "WatcherLoop",
-        args_format: :messages,
+        args_format: :auto,
+        args: fn messages ->
+          %{
+            messages: format_messages_for_baml(messages),
+            callback_docs: callback_docs
+          }
+        end,
         path: Application.app_dir(:beamlens, "priv/baml_src")
       }
       |> maybe_add_client_registry(client_registry)
@@ -369,6 +377,26 @@ defmodule Beamlens.Watcher do
       hooks: Beamlens.Telemetry.Hooks
     )
   end
+
+  defp format_messages_for_baml(messages) do
+    Enum.map(messages, fn %Puck.Message{role: role, content: content} ->
+      %{
+        role: to_string(role),
+        content: extract_text_content(content)
+      }
+    end)
+  end
+
+  defp extract_text_content(content) when is_binary(content), do: content
+
+  defp extract_text_content(content) when is_list(content) do
+    Enum.map_join(content, "\n", fn
+      %{type: "text", text: text} -> text
+      _ -> ""
+    end)
+  end
+
+  defp extract_text_content(_), do: ""
 
   defp maybe_add_client_registry(config, nil), do: config
 

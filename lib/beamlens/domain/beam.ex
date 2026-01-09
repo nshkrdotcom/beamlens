@@ -51,14 +51,40 @@ defmodule Beamlens.Domain.Beam do
   @impl true
   def callbacks do
     %{
-      "get_memory" => &memory_stats/0,
-      "get_processes" => &process_stats/0,
-      "get_schedulers" => &scheduler_stats/0,
-      "get_atoms" => &atom_stats/0,
-      "get_system" => &system_info/0,
-      "get_persistent_terms" => &persistent_terms/0,
-      "top_processes" => &top_processes_wrapper/2
+      "beam_get_memory" => &memory_stats/0,
+      "beam_get_processes" => &process_stats/0,
+      "beam_get_schedulers" => &scheduler_stats/0,
+      "beam_get_atoms" => &atom_stats/0,
+      "beam_get_system" => &system_info/0,
+      "beam_get_persistent_terms" => &persistent_terms/0,
+      "beam_top_processes" => &top_processes_wrapper/2
     }
+  end
+
+  @impl true
+  def callback_docs do
+    """
+    ### beam_get_memory()
+    Memory stats in MB: total_mb, processes_mb, processes_used_mb, system_mb, binary_mb, ets_mb, code_mb
+
+    ### beam_get_processes()
+    Process/port counts: process_count, process_limit, port_count, port_limit
+
+    ### beam_get_schedulers()
+    Scheduler stats: schedulers, schedulers_online, dirty_cpu_schedulers_online, dirty_io_schedulers, run_queue
+
+    ### beam_get_atoms()
+    Atom table: atom_count, atom_limit, atom_mb, atom_used_mb
+
+    ### beam_get_system()
+    System info: node, otp_release, elixir_version, uptime_seconds, schedulers_online
+
+    ### beam_get_persistent_terms()
+    Persistent terms: count, memory_mb
+
+    ### beam_top_processes(limit, sort_by)
+    Top N processes by "memory", "message_queue", or "reductions". Returns: total_processes, showing, offset, limit, sort_by, processes list with pid, name, memory_kb, message_queue, reductions, current_function
+    """
   end
 
   defp system_info do

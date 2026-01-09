@@ -27,6 +27,16 @@ defmodule Beamlens.Integration.WatcherTest do
         "get_test_value" => fn -> 42 end
       }
     end
+
+    def callback_docs do
+      """
+      ### get_memory()
+      Returns memory stats: total_mb, used_mb
+
+      ### get_test_value()
+      Returns 42
+      """
+    end
   end
 
   describe "watcher lifecycle" do

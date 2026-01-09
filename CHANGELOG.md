@@ -11,7 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Autonomous watcher system — LLM-driven loops that monitor domains and fire alerts
 - Built-in BEAM domain for VM metrics (memory, processes, schedulers, atoms, ports)
+- Built-in ETS domain for table monitoring (counts, memory, top tables)
+- Built-in GC domain for garbage collection statistics
+- Built-in Ports domain for port/socket monitoring
+- Built-in Sup domain for supervisor tree monitoring
 - `Beamlens.Domain` behaviour for implementing custom monitoring domains
+- `callback_docs/0` callback in Domain behaviour for dynamic LLM documentation
 - `Beamlens.list_watchers/0` — list all running watchers with status
 - `Beamlens.watcher_status/1` — get details about a specific watcher
 - `:client_registry` option to configure custom LLM providers (OpenAI, Ollama, AWS Bedrock, Google Gemini, etc.)
@@ -21,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- BEAM domain callbacks now prefixed: `get_memory` → `beam_get_memory`, etc.
+- Domain behaviour now requires `callback_docs/0` callback
 - Upgraded Puck from 0.1.0 to 0.2.2 (adds context compaction support)
 - Watchers now run as continuous LLM-driven loops instead of scheduled cron jobs
 

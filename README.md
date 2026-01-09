@@ -76,7 +76,23 @@ def start(_type, _args) do
 end
 ```
 
-The `:beam` watcher monitors BEAM VM metrics (memory, processes, schedulers, atoms, ports). It continuously analyzes system health and fires alerts when anomalies are detected.
+## Built-in Watchers
+
+| Watcher | Description |
+|---------|-------------|
+| `:beam` | BEAM VM metrics (memory, processes, schedulers, atoms) |
+| `:ets` | ETS table monitoring (counts, memory, largest tables) |
+| `:gc` | Garbage collection statistics |
+| `:ports` | Port monitoring (file descriptors, sockets) |
+| `:sup` | Supervisor tree monitoring |
+
+Start multiple watchers:
+
+```elixir
+{Beamlens, watchers: [:beam, :ets, :gc, :ports, :sup]}
+```
+
+Each watcher runs independently with its own LLM context, monitoring its specific domain.
 
 Subscribe to alerts via telemetry:
 

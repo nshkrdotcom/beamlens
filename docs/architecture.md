@@ -76,25 +76,17 @@ State transitions are driven by the LLM via the `set_state` tool.
 
 ## Lua Callbacks
 
-The `execute` tool runs Lua code in a sandbox with access to metric callbacks:
+The `execute` tool runs Lua code in a sandbox with access to domain-specific callbacks. Each domain provides its own prefixed callbacks (e.g., `beam_get_memory` for the BEAM domain).
 
-| Callback | Description |
-|----------|-------------|
-| `get_memory()` | Memory breakdown: total, processes, binary, ETS, code |
-| `get_processes()` | Process and port counts with limits |
-| `get_schedulers()` | Scheduler counts and run queue depth |
-| `get_atoms()` | Atom table count, limit, memory |
-| `get_system()` | Node identity, OTP version, uptime |
-| `get_persistent_terms()` | Persistent term count and memory |
-| `top_processes(limit, sort_by)` | Top N processes by memory, message queue, or reductions |
-
-Example Lua code:
+Example Lua code for the BEAM domain:
 
 ```lua
-local mem = get_memory()
-local procs = top_processes(5, "memory")
+local mem = beam_get_memory()
+local procs = beam_top_processes(5, "memory")
 return {memory = mem, top_procs = procs}
 ```
+
+See the domain sections below for available callbacks per domain.
 
 ## Telemetry Events
 
@@ -147,13 +139,21 @@ Configure alternative LLM providers via `:client_registry`:
 
 See [providers.md](providers.md) for configuration examples.
 
-## Included Domains
+## Built-in Domains
+
+| Domain | Module | Description |
+|--------|--------|-------------|
+| `:beam` | `Beamlens.Domain.Beam` | BEAM VM metrics (memory, processes, schedulers, atoms) |
+| `:ets` | `Beamlens.Domain.Ets` | ETS table monitoring |
+| `:gc` | `Beamlens.Domain.Gc` | Garbage collection statistics |
+| `:ports` | `Beamlens.Domain.Ports` | Port monitoring (file descriptors, sockets) |
+| `:sup` | `Beamlens.Domain.Sup` | Supervisor tree monitoring |
 
 ### BEAM Domain (`:beam`)
 
 Monitors BEAM VM runtime health.
 
-**Snapshot Metrics** (checked each iteration):
+**Snapshot Metrics:**
 - Memory utilization %
 - Process utilization %
 - Port utilization %
@@ -161,17 +161,83 @@ Monitors BEAM VM runtime health.
 - Scheduler run queue depth
 - Schedulers online
 
-**Lua Callbacks** (available in `execute` tool):
+**Lua Callbacks:**
 
 | Callback | Description |
 |----------|-------------|
-| `get_memory()` | Memory breakdown by category |
-| `get_processes()` | Process/port counts and limits |
-| `get_schedulers()` | Scheduler stats and run queue |
-| `get_atoms()` | Atom table statistics |
-| `get_system()` | Node info, OTP version, uptime |
-| `get_persistent_terms()` | Persistent term count and memory |
-| `top_processes(limit, sort_by)` | Top processes by memory/queue/reductions |
+| `beam_get_memory()` | Memory breakdown by category |
+| `beam_get_processes()` | Process/port counts and limits |
+| `beam_get_schedulers()` | Scheduler stats and run queue |
+| `beam_get_atoms()` | Atom table statistics |
+| `beam_get_system()` | Node info, OTP version, uptime |
+| `beam_get_persistent_terms()` | Persistent term count and memory |
+| `beam_top_processes(limit, sort_by)` | Top processes by memory/queue/reductions |
+
+### ETS Domain (`:ets`)
+
+Monitors ETS table health and memory usage.
+
+**Snapshot Metrics:**
+- Table count
+- Total memory (MB)
+- Largest table memory (MB)
+
+**Lua Callbacks:**
+
+| Callback | Description |
+|----------|-------------|
+| `ets_list_tables()` | All tables: name, type, protection, size, memory |
+| `ets_table_info(table_name)` | Single table details |
+| `ets_top_tables(limit, sort_by)` | Top N tables by "memory" or "size" |
+
+### GC Domain (`:gc`)
+
+Monitors garbage collection activity.
+
+**Snapshot Metrics:**
+- Total GCs
+- Words reclaimed
+- Bytes reclaimed (MB)
+
+**Lua Callbacks:**
+
+| Callback | Description |
+|----------|-------------|
+| `gc_stats()` | Global GC statistics |
+| `gc_top_processes(limit)` | Processes with largest heaps |
+
+### Ports Domain (`:ports`)
+
+Monitors BEAM ports (file descriptors, sockets).
+
+**Snapshot Metrics:**
+- Port count
+- Port limit
+- Port utilization %
+
+**Lua Callbacks:**
+
+| Callback | Description |
+|----------|-------------|
+| `ports_list()` | All ports: id, name, connected_pid |
+| `ports_info(port_id)` | Port details: I/O bytes, memory |
+| `ports_top(limit, sort_by)` | Top N ports by "input", "output", or "memory" |
+
+### Sup Domain (`:sup`)
+
+Monitors supervisor tree structure.
+
+**Snapshot Metrics:**
+- Supervisor count
+- Total children
+
+**Lua Callbacks:**
+
+| Callback | Description |
+|----------|-------------|
+| `sup_list()` | All supervisors: name, pid, child_count |
+| `sup_children(supervisor_name)` | Direct children: id, pid, type |
+| `sup_tree(supervisor_name)` | Full supervision tree (recursive, depth-limited) |
 
 ## Custom Domains
 
@@ -196,9 +262,20 @@ defmodule MyApp.Domain.Postgres do
   @impl true
   def callbacks do
     %{
-      "get_slow_queries" => &slow_queries/0,
-      "get_pool_stats" => &pool_stats/0
+      "postgres_slow_queries" => &slow_queries/0,
+      "postgres_pool_stats" => &pool_stats/0
     }
+  end
+
+  @impl true
+  def callback_docs do
+    """
+    ### postgres_slow_queries()
+    Returns queries exceeding threshold: query, duration_ms, calls
+
+    ### postgres_pool_stats()
+    Connection pool stats: size, available, checked_out, waiting
+    """
   end
 end
 ```

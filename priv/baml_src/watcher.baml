@@ -54,7 +54,7 @@ class GetSnapshots {
 
 class Execute {
   intent "execute"
-  code string @description("Lua code to execute. Available functions: get_memory(), get_processes(), get_schedulers(), get_atoms(), get_system(), get_persistent_terms(), top_processes(limit, sort_by)")
+  code string @description("Lua code to execute. Available functions are documented in the system prompt.")
 }
 
 class Wait {
@@ -63,12 +63,12 @@ class Wait {
 }
 
 // Main watcher loop function
-function WatcherLoop(messages: Message[]) -> SetState | FireAlert | GetAlerts | TakeSnapshot | GetSnapshot | GetSnapshots | Execute | Wait {
+function WatcherLoop(messages: Message[], callback_docs: string) -> SetState | FireAlert | GetAlerts | TakeSnapshot | GetSnapshot | GetSnapshots | Execute | Wait {
   client Default
   prompt #"
 {{ _.role("system") }}
-You are a BEAM VM watcher agent running continuously. Your job is to monitor
-the system, detect anomalies, and alert when necessary.
+You are a system watcher agent running continuously. Your job is to monitor
+your assigned domain, detect anomalies, and alert when necessary.
 
 ## State Model
 You have a state that reflects your current assessment:
@@ -116,17 +116,12 @@ Retrieve multiple snapshots with optional pagination.
 
 ### execute(code)
 Run Lua code to gather detailed metrics. Available functions:
-- get_memory() -> memory stats (total_mb, processes_mb, ets_mb, etc.)
-- get_processes() -> process/port counts and limits
-- get_schedulers() -> scheduler count and run queue
-- get_atoms() -> atom table stats
-- get_system() -> node info, uptime, versions
-- get_persistent_terms() -> persistent term stats
-- top_processes(limit, sort_by) -> top N processes by "memory"/"message_queue"/"reductions"
+
+{{ callback_docs }}
 
 Example:
-local mem = get_memory()
-local procs = top_processes(10, "memory")
+local mem = beam_get_memory()
+local procs = beam_top_processes(10, "memory")
 return { memory_mb = mem.total_mb, top_proc = procs.processes[1] }
 
 ### wait(ms)
@@ -164,6 +159,19 @@ test WatcherLoop_CallsTakeSnapshot {
     messages [
       { role "user", content "Current state: healthy" }
     ]
+    callback_docs #"
+### beam_get_memory()
+Memory stats in MB: total_mb, processes_mb, system_mb, binary_mb, ets_mb, code_mb
+
+### beam_get_processes()
+Process/port counts: process_count, process_limit, port_count, port_limit
+
+### beam_get_schedulers()
+Scheduler stats: schedulers, schedulers_online, run_queue
+
+### beam_top_processes(limit, sort_by)
+Top N processes by "memory", "message_queue", or "reductions"
+"#
   }
   @@assert(calls_take_snapshot, {{ this.intent == "take_snapshot" }})
 }
@@ -175,6 +183,13 @@ test WatcherLoop_HealthySnapshot {
       { role "user", content #"Current state: healthy"# },
       { role "user", content #"{"id":"abc123","captured_at":"2024-01-06T10:30:00Z","data":{"memory_utilization_pct":45.2,"process_utilization_pct":12.1,"port_utilization_pct":3.4,"atom_utilization_pct":8.9,"scheduler_run_queue":0,"schedulers_online":8}}"# }
     ]
+    callback_docs #"
+### beam_get_memory()
+Memory stats in MB: total_mb, processes_mb, system_mb, binary_mb, ets_mb, code_mb
+
+### beam_top_processes(limit, sort_by)
+Top N processes by "memory", "message_queue", or "reductions"
+"#
   }
   @@assert(stays_healthy_or_waits, {{
     (this.intent == "set_state" and this.state == "healthy") or
@@ -189,6 +204,13 @@ test WatcherLoop_HighMemory_Investigates {
       { role "user", content #"Current state: healthy"# },
       { role "user", content #"{"id":"abc123","captured_at":"2024-01-06T10:30:00Z","data":{"memory_utilization_pct":78.5,"process_utilization_pct":12.1,"port_utilization_pct":3.4,"atom_utilization_pct":8.9,"scheduler_run_queue":0,"schedulers_online":8}}"# }
     ]
+    callback_docs #"
+### beam_get_memory()
+Memory stats in MB: total_mb, processes_mb, system_mb, binary_mb, ets_mb, code_mb
+
+### beam_top_processes(limit, sort_by)
+Top N processes by "memory", "message_queue", or "reductions"
+"#
   }
   @@assert(investigates_or_alerts, {{
     this.intent == "execute" or
@@ -206,6 +228,13 @@ test WatcherLoop_CriticalMemory_Alerts {
       { role "user", content #"{"id":"snap1","captured_at":"2024-01-06T10:30:00Z","data":{"memory_utilization_pct":85.0,"process_utilization_pct":12.1,"port_utilization_pct":3.4,"atom_utilization_pct":8.9,"scheduler_run_queue":0,"schedulers_online":8}}"# },
       { role "user", content #"{"id":"snap2","captured_at":"2024-01-06T10:30:30Z","data":{"memory_utilization_pct":92.5,"process_utilization_pct":12.1,"port_utilization_pct":3.4,"atom_utilization_pct":8.9,"scheduler_run_queue":0,"schedulers_online":8}}"# }
     ]
+    callback_docs #"
+### beam_get_memory()
+Memory stats in MB: total_mb, processes_mb, system_mb, binary_mb, ets_mb, code_mb
+
+### beam_top_processes(limit, sort_by)
+Top N processes by "memory", "message_queue", or "reductions"
+"#
   }
   @@assert(alerts_or_escalates, {{
     this.intent == "fire_alert" or
@@ -221,6 +250,13 @@ test WatcherLoop_SchedulerContention {
       { role "user", content #"Current state: healthy"# },
       { role "user", content #"{"id":"abc123","captured_at":"2024-01-06T10:30:00Z","data":{"memory_utilization_pct":45.2,"process_utilization_pct":12.1,"port_utilization_pct":3.4,"atom_utilization_pct":8.9,"scheduler_run_queue":85,"schedulers_online":8}}"# }
     ]
+    callback_docs #"
+### beam_get_schedulers()
+Scheduler stats: schedulers, schedulers_online, run_queue
+
+### beam_top_processes(limit, sort_by)
+Top N processes by "memory", "message_queue", or "reductions"
+"#
   }
   @@assert(responds_to_contention, {{
     this.intent == "execute" or
