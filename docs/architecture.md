@@ -93,6 +93,7 @@ Available tools include GetOverview, GetSystemInfo, GetMemoryStats, GetProcessSt
 | Baseline.Analyzer | Calls AnalyzeBaseline LLM to learn patterns and detect anomalies |
 | Baseline.Context | Tracks LLM notes and timing for baseline learning |
 | Baseline.Investigator | Tool-calling loop for watcher anomaly investigation |
+| Baseline.Decision | Decision structs (ContinueObserving, Alert, Healthy) for baseline LLM output |
 | AlertQueue | Buffer anomaly alerts from watchers |
 | AlertHandler | Trigger investigation when alerts arrive |
 | Agent | Run tool-calling loop to gather metrics |
@@ -140,3 +141,27 @@ BeamLens uses [BAML](https://docs.boundaryml.com) for type-safe LLM prompts via 
 - **SelectInvestigationTool**: Watcher investigation loop, gathers detailed data after anomaly detection
 - **SelectTool**: Main agent loop, chooses which metric-gathering tool to execute next
 - **JudgeAnalysis**: Reviews the agent's analysis for quality, may request retries
+
+## LLM Client Configuration
+
+By default, BeamLens uses Anthropic's Claude Haiku. Configure alternative LLM providers via `:client_registry`:
+
+```elixir
+{Beamlens,
+  watchers: [{:beam, "*/5 * * * *"}],
+  client_registry: %{
+    primary: "Ollama",
+    clients: [
+      %{name: "Ollama", provider: "openai-generic",
+        options: %{base_url: "http://localhost:11434/v1", model: "llama3"}}
+    ]
+  }
+}
+```
+
+The `client_registry` propagates through the supervision tree to all LLM-calling components:
+- `Beamlens.Agent` for health analysis
+- `Beamlens.Judge` for quality checks
+- `Beamlens.AlertHandler` for alert investigation
+- `Beamlens.Watchers.Baseline.Analyzer` for anomaly detection
+- `Beamlens.Watchers.Baseline.Investigator` for deep investigation

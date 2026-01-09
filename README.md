@@ -173,6 +173,8 @@ Opt-in protection against LLM provider failures:
 - `Beamlens.Watchers.Watcher` — Behaviour for implementing custom watchers
 - `Beamlens.Watchers.BeamWatcher` — Built-in BEAM VM watcher
 - `Beamlens.Alert` — Watcher anomaly alerts
+- `Beamlens.AlertQueue` — Alert queue for watcher communication
+- `Beamlens.AlertHandler` — Alert handler and investigation trigger
 - `Beamlens.Telemetry` — Telemetry events for observability
 
 ## License
