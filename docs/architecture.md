@@ -86,6 +86,7 @@ The Coordinator is a GenServer that receives alerts from all watchers and correl
 | `update_alert_statuses` | Set status on multiple alerts |
 | `produce_insight` | Create insight correlating alerts (auto-resolves them) |
 | `done` | End processing, wait for next alert |
+| `think` | Reason through complex decisions before acting |
 
 ### Correlation Types
 
@@ -118,6 +119,7 @@ end, nil)
 | `get_snapshots` | Retrieve multiple snapshots with pagination |
 | `execute` | Run Lua code with metric callbacks |
 | `wait` | Sleep before next iteration (LLM-controlled timing) |
+| `think` | Reason through complex decisions before acting |
 
 ## Lua Callbacks
 

@@ -22,7 +22,7 @@ defmodule Beamlens.Coordinator do
   use GenServer
 
   alias Beamlens.Coordinator.{Insight, Tools}
-  alias Beamlens.Coordinator.Tools.{Done, GetAlerts, ProduceInsight, UpdateAlertStatuses}
+  alias Beamlens.Coordinator.Tools.{Done, GetAlerts, ProduceInsight, Think, UpdateAlertStatuses}
   alias Beamlens.LLM.Utils
   alias Beamlens.Telemetry
   alias Beamlens.Watcher.Alert
@@ -284,6 +284,22 @@ defmodule Beamlens.Coordinator do
     else
       {:noreply, %{state | running: false, pending_trace_id: nil}}
     end
+  end
+
+  defp handle_action(%Think{thought: thought}, state, trace_id) do
+    emit_telemetry(:think, state, %{trace_id: trace_id})
+
+    result = %{thought: thought, recorded: true}
+    new_context = Utils.add_result(state.context, result)
+
+    new_state = %{
+      state
+      | context: new_context,
+        iteration: state.iteration + 1,
+        pending_trace_id: nil
+    }
+
+    {:noreply, new_state, {:continue, :loop}}
   end
 
   defp filter_alerts(alerts, nil), do: alerts

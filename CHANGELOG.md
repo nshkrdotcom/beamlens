@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Think tool for Watcher and Coordinator agents — enables structured reasoning before taking actions
 - Coordinator agent that correlates alerts across watchers into unified insights
 - `Beamlens.Coordinator.status/1` — get coordinator running state and alert counts
 - Telemetry events for coordinator (`[:beamlens, :coordinator, *]`)

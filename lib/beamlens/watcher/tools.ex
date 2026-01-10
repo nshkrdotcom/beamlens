@@ -11,6 +11,7 @@ defmodule Beamlens.Watcher.Tools do
   - GetSnapshots: Retrieve multiple snapshots with pagination
   - Execute: Run Lua code with metric callbacks
   - Wait: Sleep, then continue with fresh context
+  - Think: Reason through complex decisions before acting
   """
 
   defmodule SetState do
@@ -92,6 +93,16 @@ defmodule Beamlens.Watcher.Tools do
           }
   end
 
+  defmodule Think do
+    @moduledoc false
+    defstruct [:intent, :thought]
+
+    @type t :: %__MODULE__{
+            intent: String.t(),
+            thought: String.t()
+          }
+  end
+
   @doc """
   Returns a Zoi union schema for parsing watcher tool responses.
 
@@ -106,7 +117,8 @@ defmodule Beamlens.Watcher.Tools do
       get_snapshot_schema(),
       get_snapshots_schema(),
       execute_schema(),
-      wait_schema()
+      wait_schema(),
+      think_schema()
     ])
   end
 
@@ -175,6 +187,14 @@ defmodule Beamlens.Watcher.Tools do
       ms: Zoi.integer()
     })
     |> Zoi.transform(fn data -> {:ok, struct!(Wait, data)} end)
+  end
+
+  defp think_schema do
+    Zoi.object(%{
+      intent: Zoi.literal("think"),
+      thought: Zoi.string()
+    })
+    |> Zoi.transform(fn data -> {:ok, struct!(Think, data)} end)
   end
 
   defp atomize_state("healthy"), do: {:ok, :healthy}

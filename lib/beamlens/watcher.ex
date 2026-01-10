@@ -6,7 +6,7 @@ defmodule Beamlens.Watcher do
 
   1. Collect snapshot
   2. Send to LLM with current state
-  3. LLM returns action (set_state, fire_alert, get_alerts, execute, wait)
+  3. LLM returns action (set_state, fire_alert, get_alerts, execute, wait, think)
   4. Execute action and loop
 
   The `wait` tool lets the LLM control its own cadence:
@@ -44,6 +44,7 @@ defmodule Beamlens.Watcher do
     GetSnapshots,
     SetState,
     TakeSnapshot,
+    Think,
     Wait
   }
 
@@ -390,6 +391,22 @@ defmodule Beamlens.Watcher do
     }
 
     {:noreply, new_state}
+  end
+
+  defp handle_action(%Think{thought: thought}, state, trace_id) do
+    emit_telemetry(:think, state, %{trace_id: trace_id})
+
+    result = %{thought: thought, recorded: true}
+    new_context = Utils.add_result(state.context, result)
+
+    new_state = %{
+      state
+      | context: new_context,
+        iteration: state.iteration + 1,
+        pending_trace_id: nil
+    }
+
+    {:noreply, new_state, {:continue, :loop}}
   end
 
   defp collect_snapshot(state) do

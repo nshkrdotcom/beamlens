@@ -1,7 +1,7 @@
 // ============================================================================
 // WATCHER AGENT TOOLS
 // ============================================================================
-// Continuous agent loop with 8 tools:
+// Continuous agent loop with 9 tools:
 //
 // Message class for conversation history
 class Message {
@@ -62,8 +62,13 @@ class Wait {
   ms int @description("Milliseconds to sleep before next iteration")
 }
 
+class Think {
+  intent "think"
+  thought string @description("Your reasoning about the current situation")
+}
+
 // Main watcher loop function
-function WatcherLoop(messages: Message[], callback_docs: string) -> SetState | FireAlert | GetAlerts | TakeSnapshot | GetSnapshot | GetSnapshots | Execute | Wait {
+function WatcherLoop(messages: Message[], callback_docs: string) -> SetState | FireAlert | GetAlerts | TakeSnapshot | GetSnapshot | GetSnapshots | Execute | Wait | Think {
   client Default
   prompt #"
 {{ _.role("system") }}
@@ -130,6 +135,13 @@ Sleep for the specified milliseconds, then continue.
 - Elevated concern: wait(5000) -- 5 seconds
 - Critical monitoring: wait(1000) -- 1 second
 
+### think(thought)
+Use this to reason through complex decisions before acting. Your thought
+will be recorded but no action is taken. Good for:
+- Analyzing tool results before deciding next action
+- Working through ambiguous situations
+- Planning multi-step investigations
+
 ## Guidelines
 
 1. Start by calling take_snapshot() to capture current system metrics
@@ -193,7 +205,8 @@ Top N processes by "memory", "message_queue", or "reductions"
   }
   @@assert(stays_healthy_or_waits, {{
     (this.intent == "set_state" and this.state == "healthy") or
-    this.intent == "wait"
+    this.intent == "wait" or
+    this.intent == "think"
   }})
 }
 
@@ -216,6 +229,7 @@ Top N processes by "memory", "message_queue", or "reductions"
     this.intent == "execute" or
     this.intent == "fire_alert" or
     this.intent == "take_snapshot" or
+    this.intent == "think" or
     (this.intent == "set_state" and this.state != "healthy")
   }})
 }
@@ -239,7 +253,8 @@ Top N processes by "memory", "message_queue", or "reductions"
   @@assert(alerts_or_escalates, {{
     this.intent == "fire_alert" or
     (this.intent == "set_state" and this.state == "critical") or
-    this.intent == "execute"
+    this.intent == "execute" or
+    this.intent == "think"
   }})
 }
 
@@ -262,6 +277,7 @@ Top N processes by "memory", "message_queue", or "reductions"
     this.intent == "execute" or
     this.intent == "fire_alert" or
     this.intent == "take_snapshot" or
+    this.intent == "think" or
     (this.intent == "set_state" and this.state != "healthy")
   }})
 }

@@ -11,6 +11,7 @@ defmodule Beamlens.Watcher.ToolsTest do
     GetSnapshots,
     SetState,
     TakeSnapshot,
+    Think,
     Wait
   }
 
@@ -104,6 +105,15 @@ defmodule Beamlens.Watcher.ToolsTest do
       assert {:ok, result} = Zoi.parse(schema, input)
       assert %Wait{} = result
       assert result.ms == 5000
+    end
+
+    test "parses think" do
+      schema = Tools.schema()
+      input = %{intent: "think", thought: "Analyzing high memory usage pattern..."}
+
+      assert {:ok, result} = Zoi.parse(schema, input)
+      assert %Think{} = result
+      assert result.thought == "Analyzing high memory usage pattern..."
     end
 
     test "transforms all valid states" do

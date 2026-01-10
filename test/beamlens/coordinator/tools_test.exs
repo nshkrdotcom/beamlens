@@ -7,6 +7,7 @@ defmodule Beamlens.Coordinator.ToolsTest do
     Done,
     GetAlerts,
     ProduceInsight,
+    Think,
     UpdateAlertStatuses
   }
 
@@ -187,6 +188,17 @@ defmodule Beamlens.Coordinator.ToolsTest do
 
       assert {:ok, result} = Zoi.parse(schema, input)
       assert %Done{} = result
+    end
+  end
+
+  describe "schema/0 - Think" do
+    test "parses think" do
+      schema = Tools.schema()
+      input = %{intent: "think", thought: "These alerts seem related..."}
+
+      assert {:ok, result} = Zoi.parse(schema, input)
+      assert %Think{} = result
+      assert result.thought == "These alerts seem related..."
     end
   end
 

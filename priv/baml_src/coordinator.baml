@@ -1,12 +1,13 @@
 // ============================================================================
 // COORDINATOR AGENT TOOLS
 // ============================================================================
-// Alert correlation agent with 4 tools:
+// Alert correlation agent with 5 tools:
 //
 // - CoordinatorGetAlerts: Query alerts, optionally filtered by status
 // - CoordinatorUpdateAlertStatuses: Set status on multiple alerts
 // - CoordinatorProduceInsight: Emit insight + auto-resolve referenced alerts
 // - CoordinatorDone: End loop, wait for next alert
+// - CoordinatorThink: Reason through complex decisions before acting
 //
 // Note: Message class is shared from watcher.baml
 
@@ -35,7 +36,12 @@ class CoordinatorDone {
   intent "done"
 }
 
-function CoordinatorLoop(messages: Message[]) -> CoordinatorGetAlerts | CoordinatorUpdateAlertStatuses | CoordinatorProduceInsight | CoordinatorDone {
+class CoordinatorThink {
+  intent "think"
+  thought string @description("Your reasoning about the current situation")
+}
+
+function CoordinatorLoop(messages: Message[]) -> CoordinatorGetAlerts | CoordinatorUpdateAlertStatuses | CoordinatorProduceInsight | CoordinatorDone | CoordinatorThink {
   client Default
   prompt #"
 {{ _.role("system") }}
@@ -65,6 +71,13 @@ Create insight correlating alerts. Auto-resolves the referenced alerts.
 
 ### done()
 End processing. Call when finished with current alerts.
+
+### think(thought)
+Use this to reason through complex decisions before acting. Your thought
+will be recorded but no action is taken. Good for:
+- Analyzing alert patterns before correlating
+- Working through ambiguous relationships
+- Planning correlation strategy
 
 ## Guidelines
 1. Start by getting unread alerts
@@ -108,7 +121,7 @@ test CoordinatorLoop_AcknowledgesUnreadAlerts {
       { role "user", content #"[{"id":"a1","status":"unread","watcher":"beam","anomaly_type":"memory_elevated","severity":"warning","summary":"Memory at 78%","detected_at":"2024-01-06T10:30:00Z"},{"id":"a2","status":"unread","watcher":"beam","anomaly_type":"scheduler_contention","severity":"warning","summary":"Run queue at 45","detected_at":"2024-01-06T10:30:30Z"}]"# }
     ]
   }
-  @@assert(acknowledges_first, {{ this.intent == "update_alert_statuses" and this.status == "acknowledged" }})
+  @@assert(acknowledges_first, {{ (this.intent == "update_alert_statuses" and this.status == "acknowledged") or this.intent == "think" }})
 }
 
 test CoordinatorLoop_ResolvesFalsePositive {
@@ -119,7 +132,7 @@ test CoordinatorLoop_ResolvesFalsePositive {
       { role "user", content #"[{"id":"a1","status":"acknowledged","watcher":"beam","anomaly_type":"memory_elevated","severity":"info","summary":"Brief memory spike, returned to normal - no action needed","detected_at":"2024-01-06T10:30:00Z"}]"# }
     ]
   }
-  @@assert(resolves_false_positive, {{ this.intent == "update_alert_statuses" and this.status == "resolved" }})
+  @@assert(resolves_false_positive, {{ (this.intent == "update_alert_statuses" and this.status == "resolved") or this.intent == "think" }})
 }
 
 test CoordinatorLoop_CompletesWhenDone {
@@ -131,5 +144,5 @@ test CoordinatorLoop_CompletesWhenDone {
       { role "user", content "No unread alerts found: []" }
     ]
   }
-  @@assert(calls_done, {{ this.intent == "done" }})
+  @@assert(calls_done, {{ this.intent == "done" or this.intent == "think" }})
 }

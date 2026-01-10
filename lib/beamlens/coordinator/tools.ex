@@ -7,6 +7,7 @@ defmodule Beamlens.Coordinator.Tools do
   - UpdateAlertStatuses: Set status on multiple alerts
   - ProduceInsight: Emit insight + auto-resolve referenced alerts
   - Done: End loop, wait for next alert
+  - Think: Reason through complex decisions before acting
   """
 
   defmodule GetAlerts do
@@ -59,6 +60,16 @@ defmodule Beamlens.Coordinator.Tools do
     @type t :: %__MODULE__{intent: String.t()}
   end
 
+  defmodule Think do
+    @moduledoc false
+    defstruct [:intent, :thought]
+
+    @type t :: %__MODULE__{
+            intent: String.t(),
+            thought: String.t()
+          }
+  end
+
   @doc """
   Returns a Zoi union schema for parsing coordinator tool responses.
 
@@ -69,7 +80,8 @@ defmodule Beamlens.Coordinator.Tools do
       get_alerts_schema(),
       update_alert_statuses_schema(),
       produce_insight_schema(),
-      done_schema()
+      done_schema(),
+      think_schema()
     ])
   end
 
@@ -116,6 +128,14 @@ defmodule Beamlens.Coordinator.Tools do
   defp done_schema do
     Zoi.object(%{intent: Zoi.literal("done")})
     |> Zoi.transform(fn data -> {:ok, struct!(Done, data)} end)
+  end
+
+  defp think_schema do
+    Zoi.object(%{
+      intent: Zoi.literal("think"),
+      thought: Zoi.string()
+    })
+    |> Zoi.transform(fn data -> {:ok, struct!(Think, data)} end)
   end
 
   defp atomize_status("unread"), do: {:ok, :unread}
