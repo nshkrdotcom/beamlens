@@ -36,6 +36,7 @@ defmodule Beamlens.LLM.Utils do
 
   def extract_text_content(content) when is_list(content) do
     Enum.map_join(content, "\n", fn
+      %{type: :text, text: text} -> text
       %{type: "text", text: text} -> text
       _ -> ""
     end)

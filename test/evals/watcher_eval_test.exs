@@ -1,0 +1,83 @@
+defmodule Beamlens.Evals.WatcherEvalTest do
+  use ExUnit.Case, async: false
+
+  alias Beamlens.Watcher
+  alias Beamlens.Watcher.Tools.{FireAlert, TakeSnapshot, Wait}
+  alias Puck.Eval.Graders
+
+  @moduletag :eval
+
+  defmodule HealthyDomain do
+    @behaviour Beamlens.Domain
+
+    def domain, do: :eval_healthy
+
+    def snapshot do
+      %{
+        memory_utilization_pct: 45.0,
+        process_utilization_pct: 10.0,
+        port_utilization_pct: 5.0,
+        atom_utilization_pct: 2.0,
+        scheduler_run_queue: 0,
+        schedulers_online: 8
+      }
+    end
+
+    def callbacks do
+      %{
+        "get_test_value" => fn -> 42 end
+      }
+    end
+
+    def callback_docs do
+      "### get_test_value()\nReturns 42 for testing"
+    end
+  end
+
+  describe "watcher happy path eval" do
+    test "healthy metrics lead to TakeSnapshot and eventually Wait (no alerts)" do
+      {_output, trajectory} =
+        Puck.Eval.collect(
+          fn ->
+            {:ok, pid} = Watcher.start_link(domain_module: HealthyDomain)
+            wait_for_wait_and_stop(pid)
+            :ok
+          end,
+          timeout: 100
+        )
+
+      result =
+        Puck.Eval.grade(nil, trajectory, [
+          Graders.output_produced(TakeSnapshot),
+          Graders.output_not_produced(FireAlert),
+          Graders.output_produced(Wait)
+        ])
+
+      assert result.passed?,
+             "Eval failed.\nSteps: #{trajectory.total_steps}\nResults: #{inspect(result.grader_results, pretty: true)}"
+    end
+  end
+
+  defp wait_for_wait_and_stop(pid) do
+    ref = make_ref()
+    parent = self()
+
+    :telemetry.attach(
+      ref,
+      [:beamlens, :watcher, :wait],
+      fn _event, _measurements, _metadata, _ ->
+        send(parent, {:wait_fired, ref})
+      end,
+      nil
+    )
+
+    receive do
+      {:wait_fired, ^ref} ->
+        Watcher.stop(pid)
+    after
+      60_000 -> raise "Watcher did not reach Wait action within timeout"
+    end
+
+    :telemetry.detach(ref)
+  end
+end
