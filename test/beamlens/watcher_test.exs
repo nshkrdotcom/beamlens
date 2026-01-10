@@ -147,39 +147,6 @@ defmodule Beamlens.WatcherTest do
     end
   end
 
-  describe "max iterations" do
-    test "stops loop when max iterations reached" do
-      ref = make_ref()
-      parent = self()
-
-      :telemetry.attach(
-        ref,
-        [:beamlens, :watcher, :loop_stopped],
-        fn _event, _measurements, metadata, _ ->
-          send(parent, {:telemetry, :loop_stopped, metadata})
-        end,
-        nil
-      )
-
-      {:ok, pid} = start_watcher_without_loop()
-
-      :sys.replace_state(pid, fn state ->
-        %{state | iteration: 100, running: true}
-      end)
-
-      send(pid, :continue_loop)
-
-      assert_receive {:telemetry, :loop_stopped, %{watcher: :test_continuous, final_state: _}},
-                     1000
-
-      state = :sys.get_state(pid)
-      assert state.running == false
-
-      Watcher.stop(pid)
-      :telemetry.detach(ref)
-    end
-  end
-
   describe "snapshot management" do
     test "snapshots are stored with unique IDs" do
       snapshot1 = Snapshot.new(%{test: 1})
@@ -369,6 +336,73 @@ defmodule Beamlens.WatcherTest do
       assert is_binary(alert.id)
       assert %DateTime{} = alert.detected_at
       assert is_binary(alert.trace_id)
+    end
+  end
+
+  describe "compaction configuration" do
+    test "uses default compaction settings when not specified" do
+      {:ok, pid} = start_watcher_without_loop()
+
+      state = :sys.get_state(pid)
+      client = state.client
+
+      assert client.auto_compaction != nil
+      {:summarize, config} = client.auto_compaction
+      assert Keyword.get(config, :max_tokens) == 50_000
+      assert Keyword.get(config, :keep_last) == 5
+      assert is_binary(Keyword.get(config, :prompt))
+
+      Watcher.stop(pid)
+    end
+
+    test "uses custom compaction_max_tokens when provided" do
+      {:ok, pid} = start_watcher_without_loop(compaction_max_tokens: 100_000)
+
+      state = :sys.get_state(pid)
+      {:summarize, config} = state.client.auto_compaction
+      assert Keyword.get(config, :max_tokens) == 100_000
+
+      Watcher.stop(pid)
+    end
+
+    test "uses custom compaction_keep_last when provided" do
+      {:ok, pid} = start_watcher_without_loop(compaction_keep_last: 10)
+
+      state = :sys.get_state(pid)
+      {:summarize, config} = state.client.auto_compaction
+      assert Keyword.get(config, :keep_last) == 10
+
+      Watcher.stop(pid)
+    end
+
+    test "uses both custom compaction settings when provided" do
+      {:ok, pid} =
+        start_watcher_without_loop(
+          compaction_max_tokens: 75_000,
+          compaction_keep_last: 8
+        )
+
+      state = :sys.get_state(pid)
+      {:summarize, config} = state.client.auto_compaction
+
+      assert Keyword.get(config, :max_tokens) == 75_000
+      assert Keyword.get(config, :keep_last) == 8
+
+      Watcher.stop(pid)
+    end
+
+    test "compaction prompt mentions monitoring context" do
+      {:ok, pid} = start_watcher_without_loop()
+
+      state = :sys.get_state(pid)
+      {:summarize, config} = state.client.auto_compaction
+      prompt = Keyword.get(config, :prompt)
+
+      assert prompt =~ "monitoring"
+      assert prompt =~ "Snapshot IDs"
+      assert prompt =~ "anomalies"
+
+      Watcher.stop(pid)
     end
   end
 end

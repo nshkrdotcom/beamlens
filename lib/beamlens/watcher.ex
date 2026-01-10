@@ -51,8 +51,6 @@ defmodule Beamlens.Watcher do
   alias Puck.Context
   alias Puck.Sandbox.Eval
 
-  @max_iterations 100
-
   defstruct [
     :name,
     :domain_module,
@@ -77,6 +75,8 @@ defmodule Beamlens.Watcher do
     * `:domain_module` - Required module implementing `Beamlens.Domain`
     * `:client_registry` - Optional LLM provider configuration map
     * `:start_loop` - Whether to start the LLM loop on init (default: true)
+    * `:compaction_max_tokens` - Token threshold for compaction (default: 50_000)
+    * `:compaction_keep_last` - Messages to keep verbatim after compaction (default: 5)
 
   """
   def start_link(opts) do
@@ -115,7 +115,7 @@ defmodule Beamlens.Watcher do
     name = Keyword.get(opts, :name)
     client_registry = Keyword.get(opts, :client_registry)
     start_loop = Keyword.get(opts, :start_loop, true)
-    client = build_puck_client(domain_module, client_registry)
+    client = build_puck_client(domain_module, client_registry, opts)
 
     state = %__MODULE__{
       name: name,
@@ -138,11 +138,6 @@ defmodule Beamlens.Watcher do
   end
 
   @impl true
-  def handle_continue(:loop, %{iteration: iteration} = state) when iteration >= @max_iterations do
-    emit_telemetry(:loop_stopped, state, %{final_state: state.state})
-    {:noreply, %{state | running: false}}
-  end
-
   def handle_continue(:loop, state) do
     trace_id = Telemetry.generate_trace_id()
 
@@ -442,7 +437,7 @@ defmodule Beamlens.Watcher do
     end
   end
 
-  defp build_puck_client(domain_module, client_registry) do
+  defp build_puck_client(domain_module, client_registry, opts) do
     callback_docs = domain_module.callback_docs()
 
     backend_config =
@@ -461,8 +456,32 @@ defmodule Beamlens.Watcher do
 
     Puck.Client.new(
       {Puck.Backends.Baml, backend_config},
-      hooks: Beamlens.Telemetry.Hooks
+      hooks: Beamlens.Telemetry.Hooks,
+      auto_compaction: build_compaction_config(opts)
     )
+  end
+
+  defp build_compaction_config(opts) do
+    max_tokens = Keyword.get(opts, :compaction_max_tokens, 50_000)
+    keep_last = Keyword.get(opts, :compaction_keep_last, 5)
+
+    {:summarize,
+      max_tokens: max_tokens,
+      keep_last: keep_last,
+      prompt: watcher_compaction_prompt()}
+  end
+
+  defp watcher_compaction_prompt do
+    """
+    Summarize this monitoring session, preserving:
+    - What anomalies or concerns were detected
+    - Current system state and trend direction
+    - Snapshot IDs referenced (preserve exact IDs)
+    - Key metric values that informed decisions
+    - Any alerts fired and their reasons
+
+    Be concise. This summary will be used to continue monitoring.
+    """
   end
 
   defp emit_telemetry(event, state, extra \\ %{}) do

@@ -29,7 +29,6 @@ defmodule Beamlens.Coordinator do
   alias Puck.Context
 
   @telemetry_handler_id "beamlens-coordinator-alerts"
-  @max_iterations 20
 
   defstruct [
     :client,
@@ -49,6 +48,8 @@ defmodule Beamlens.Coordinator do
 
     * `:name` - Optional process name for registration (default: `__MODULE__`)
     * `:client_registry` - Optional LLM provider configuration map
+    * `:compaction_max_tokens` - Token threshold for compaction (default: 50_000)
+    * `:compaction_keep_last` - Messages to keep verbatim after compaction (default: 5)
 
   """
   def start_link(opts) do
@@ -65,7 +66,7 @@ defmodule Beamlens.Coordinator do
 
   @impl true
   def init(opts) do
-    client = build_puck_client(Keyword.get(opts, :client_registry))
+    client = build_puck_client(Keyword.get(opts, :client_registry), opts)
 
     :telemetry.attach(
       @telemetry_handler_id,
@@ -111,11 +112,6 @@ defmodule Beamlens.Coordinator do
   end
 
   @impl true
-  def handle_continue(:loop, %{iteration: iteration} = state) when iteration >= @max_iterations do
-    emit_telemetry(:loop_stopped, state, %{reason: :max_iterations})
-    {:noreply, %{state | running: false}}
-  end
-
   def handle_continue(:loop, state) do
     trace_id = Telemetry.generate_trace_id()
 
@@ -323,7 +319,7 @@ defmodule Beamlens.Coordinator do
     Enum.count(alerts, fn {_, %{status: s}} -> s == status end)
   end
 
-  defp build_puck_client(client_registry) do
+  defp build_puck_client(client_registry, opts) do
     backend_config =
       %{
         function: "CoordinatorLoop",
@@ -337,8 +333,32 @@ defmodule Beamlens.Coordinator do
 
     Puck.Client.new(
       {Puck.Backends.Baml, backend_config},
-      hooks: Beamlens.Telemetry.Hooks
+      hooks: Beamlens.Telemetry.Hooks,
+      auto_compaction: build_compaction_config(opts)
     )
+  end
+
+  defp build_compaction_config(opts) do
+    max_tokens = Keyword.get(opts, :compaction_max_tokens, 50_000)
+    keep_last = Keyword.get(opts, :compaction_keep_last, 5)
+
+    {:summarize,
+      max_tokens: max_tokens,
+      keep_last: keep_last,
+      prompt: coordinator_compaction_prompt()}
+  end
+
+  defp coordinator_compaction_prompt do
+    """
+    Summarize this alert analysis session, preserving:
+    - Alert IDs and their statuses (exact IDs required)
+    - Correlations identified between alerts
+    - Insights produced and their reasoning
+    - Pending analysis or patterns being investigated
+    - Any alerts still needing attention
+
+    Be concise. This summary will be used to continue correlation analysis.
+    """
   end
 
   defp emit_telemetry(event, state, extra \\ %{}) do

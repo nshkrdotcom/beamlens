@@ -14,6 +14,14 @@ defmodule Beamlens.Telemetry.Hooks do
         trace_id: Beamlens.Telemetry.generate_trace_id(),
         iteration: 1
       })
+
+  ## Callbacks
+
+  * `on_call_start/3` - Emits `[:beamlens, :llm, :start]`
+  * `on_call_end/3` - Emits `[:beamlens, :llm, :stop]`
+  * `on_call_error/3` - Emits `[:beamlens, :llm, :exception]`
+  * `on_compaction_start/3` - Emits `[:beamlens, :compaction, :start]`
+  * `on_compaction_end/2` - Emits `[:beamlens, :compaction, :stop]`
   """
 
   @behaviour Puck.Hooks
@@ -59,6 +67,38 @@ defmodule Beamlens.Telemetry.Hooks do
       %{duration: duration},
       Map.merge(metadata, %{kind: :error, reason: error, stacktrace: []})
     )
+  end
+
+  @impl true
+  def on_compaction_start(context, strategy, config) do
+    metadata = extract_trace_metadata(context)
+
+    :telemetry.execute(
+      [:beamlens, :compaction, :start],
+      %{
+        system_time: System.system_time(),
+        message_count: length(context.messages)
+      },
+      Map.merge(metadata, %{strategy: strategy, config: config})
+    )
+
+    :ok
+  end
+
+  @impl true
+  def on_compaction_end(context, _strategy) do
+    metadata = extract_trace_metadata(context)
+
+    :telemetry.execute(
+      [:beamlens, :compaction, :stop],
+      %{
+        system_time: System.system_time(),
+        message_count: length(context.messages)
+      },
+      metadata
+    )
+
+    :ok
   end
 
   defp extract_trace_metadata(context) do

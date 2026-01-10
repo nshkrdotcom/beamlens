@@ -18,7 +18,24 @@ defmodule Beamlens.Watcher.Supervisor do
   Watchers can be specified in two forms:
 
     * `:domain` - Uses built-in domain module (e.g., `:beam` → `Beamlens.Domain.Beam`)
-    * `[name: atom, domain_module: module]` - Custom domain module
+    * `[name: atom, domain_module: module, ...]` - Custom domain module with options
+
+  ## Watcher Options
+
+    * `:name` - Required. Atom identifier for the watcher
+    * `:domain_module` - Required. Module implementing `Beamlens.Domain`
+    * `:compaction_max_tokens` - Token threshold before compaction (default: 50,000)
+    * `:compaction_keep_last` - Messages to keep after compaction (default: 5)
+
+  ## Example with Compaction
+
+      config :beamlens,
+        watchers: [
+          :beam,
+          [name: :ets, domain_module: Beamlens.Domain.Ets,
+           compaction_max_tokens: 100_000,
+           compaction_keep_last: 10]
+        ]
   """
 
   use DynamicSupervisor
@@ -41,20 +58,17 @@ defmodule Beamlens.Watcher.Supervisor do
   end
 
   @impl true
-  def init(opts) do
-    watchers = Keyword.get(opts, :watchers, [])
-    client_registry = Keyword.get(opts, :client_registry)
-
-    if watchers != [] do
-      send(self(), {:start_watchers, watchers, client_registry})
-    end
-
+  def init(_opts) do
     DynamicSupervisor.init(strategy: :one_for_one)
   end
 
-  def handle_info({:start_watchers, watchers, client_registry}, state) do
-    Enum.each(watchers, &start_watcher(__MODULE__, &1, client_registry))
-    {:noreply, state}
+  @doc """
+  Starts all configured watchers with the given options.
+
+  Called by the parent supervisor after WatcherSupervisor is started.
+  """
+  def start_watchers_with_opts(supervisor \\ __MODULE__, watchers, client_registry) do
+    Enum.each(watchers, &start_watcher(supervisor, &1, client_registry))
   end
 
   @doc """

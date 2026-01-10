@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Configurable compaction for watchers and coordinators (`:compaction_max_tokens`, `:compaction_keep_last`)
+- Telemetry events for compaction (`[:beamlens, :compaction, :start]`, `[:beamlens, :compaction, :stop]`)
 - Think tool for Watcher and Coordinator agents — enables structured reasoning before taking actions
 - Coordinator agent that correlates alerts across watchers into unified insights
 - `Beamlens.Coordinator.status/1` — get coordinator running state and alert counts
@@ -35,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Watchers and coordinator no longer have iteration limits (can run indefinitely with compaction)
 - BEAM domain callbacks now prefixed: `get_memory` → `beam_get_memory`, etc.
 - Domain behaviour now requires `callback_docs/0` callback
 - Upgraded Puck to 0.2.6 (context compaction, automatic atom→string key conversion for Lua callbacks)

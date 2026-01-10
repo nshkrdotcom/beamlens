@@ -189,6 +189,29 @@ Subscribe to insights:
 end, nil)
 ```
 
+## Configuration
+
+### Compaction
+
+Watchers and the coordinator use context compaction to run indefinitely without exceeding the LLM's context window. When the context grows too large, it's summarized while preserving key information.
+
+Configure compaction per-watcher or globally:
+
+```elixir
+{Beamlens, watchers: [
+  :beam,
+  [name: :ets, domain_module: Beamlens.Domain.Ets,
+   compaction_max_tokens: 100_000,
+   compaction_keep_last: 10]
+]}
+```
+
+Options:
+- `:compaction_max_tokens` — Token threshold before compaction triggers (default: 50,000)
+- `:compaction_keep_last` — Recent messages to keep verbatim after compaction (default: 5)
+
+**Sizing guidance:** Set `:compaction_max_tokens` to roughly 10% of your model's context window. This leaves ample room for the compacted summary, new messages, and system prompts. For a 200k context window, 20k is reasonable. For smaller windows (e.g., 32k), reduce to 3k.
+
 ## License
 
 Apache-2.0

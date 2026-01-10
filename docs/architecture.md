@@ -153,6 +153,8 @@ Watchers and the Coordinator emit telemetry events for observability. Key events
 | `[:beamlens, :coordinator, :done]` | Analysis loop completed |
 | `[:beamlens, :llm, :start]` | LLM call started |
 | `[:beamlens, :llm, :stop]` | LLM call completed |
+| `[:beamlens, :compaction, :start]` | Context compaction started |
+| `[:beamlens, :compaction, :stop]` | Context compaction completed |
 
 Subscribe to alerts:
 
@@ -192,6 +194,38 @@ Configure alternative LLM providers via `:client_registry`:
 ```
 
 See [providers.md](providers.md) for configuration examples.
+
+## Compaction
+
+Watchers and the Coordinator use context compaction to run indefinitely without exceeding the LLM's context window. When the context grows beyond a configurable token threshold, Puck's summarization strategy compacts the conversation while preserving essential information.
+
+**Configuration Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `:compaction_max_tokens` | 50,000 | Token threshold before compaction triggers |
+| `:compaction_keep_last` | 5 | Recent messages to keep verbatim after compaction |
+
+**Example:**
+
+```elixir
+{Beamlens, watchers: [
+  :beam,
+  [name: :ets, domain_module: Beamlens.Domain.Ets,
+   compaction_max_tokens: 100_000,
+   compaction_keep_last: 10]
+]}
+```
+
+The compaction prompt preserves:
+- Anomalies detected and trend direction
+- Snapshot IDs (exact values required for alert references)
+- Key metric values that informed decisions
+- Alerts fired and their reasons
+
+Compaction events are emitted via telemetry: `[:beamlens, :compaction, :start]` and `[:beamlens, :compaction, :stop]`.
+
+**Sizing Guidance:** Set `:compaction_max_tokens` to roughly 10% of your model's context window. This leaves ample room for the compacted summary, new incoming messages, and system prompts. For a 200k context window, 20k is reasonable. For smaller windows (e.g., 32k), reduce to 3k.
 
 ## Built-in Domains
 

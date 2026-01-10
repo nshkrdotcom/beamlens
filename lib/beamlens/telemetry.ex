@@ -156,6 +156,16 @@ defmodule Beamlens.Telemetry do
     - Measurements: `%{system_time: integer}`
     - Metadata: `%{running: boolean, alert_count: integer, message: String.t()}`
 
+  ## Compaction Events
+
+  * `[:beamlens, :compaction, :start]` - Context compaction starting
+    - Measurements: `%{system_time: integer, message_count: integer}`
+    - Metadata: `%{trace_id: String.t(), iteration: integer, strategy: module(), config: map()}`
+
+  * `[:beamlens, :compaction, :stop]` - Context compaction completed
+    - Measurements: `%{system_time: integer, message_count: integer}`
+    - Metadata: `%{trace_id: String.t(), iteration: integer}`
+
   ## Example Handler
 
       :telemetry.attach(
@@ -213,7 +223,9 @@ defmodule Beamlens.Telemetry do
       [:beamlens, :coordinator, :done],
       [:beamlens, :coordinator, :loop_stopped],
       [:beamlens, :coordinator, :llm_error],
-      [:beamlens, :coordinator, :unexpected_message]
+      [:beamlens, :coordinator, :unexpected_message],
+      [:beamlens, :compaction, :start],
+      [:beamlens, :compaction, :stop]
     ]
   end
 

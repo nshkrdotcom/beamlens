@@ -140,4 +140,131 @@ defmodule Beamlens.Telemetry.HooksTest do
       :telemetry.detach("test-llm-error-#{inspect(ref)}")
     end
   end
+
+  describe "on_compaction_start/3" do
+    test "emits compaction start event with message count and strategy" do
+      ref = make_ref()
+      test_pid = self()
+
+      :telemetry.attach(
+        "test-compaction-start-#{inspect(ref)}",
+        [:beamlens, :compaction, :start],
+        fn event, measurements, metadata, _config ->
+          send(test_pid, {:telemetry, event, measurements, metadata})
+        end,
+        nil
+      )
+
+      context = %Puck.Context{
+        messages: [%{role: :user}, %{role: :assistant}, %{role: :user}],
+        metadata: %{trace_id: "trace-compact", iteration: 7}
+      }
+
+      result = Hooks.on_compaction_start(context, Puck.Compaction.Summarize, %{max_tokens: 50_000})
+
+      assert result == :ok
+
+      assert_receive {:telemetry, [:beamlens, :compaction, :start], measurements, metadata}
+      assert is_integer(measurements.system_time)
+      assert measurements.message_count == 3
+      assert metadata.trace_id == "trace-compact"
+      assert metadata.iteration == 7
+      assert metadata.strategy == Puck.Compaction.Summarize
+      assert metadata.config == %{max_tokens: 50_000}
+
+      :telemetry.detach("test-compaction-start-#{inspect(ref)}")
+    end
+
+    test "handles missing trace metadata gracefully" do
+      ref = make_ref()
+      test_pid = self()
+
+      :telemetry.attach(
+        "test-compaction-start-no-meta-#{inspect(ref)}",
+        [:beamlens, :compaction, :start],
+        fn event, measurements, metadata, _config ->
+          send(test_pid, {:telemetry, event, measurements, metadata})
+        end,
+        nil
+      )
+
+      context = %Puck.Context{
+        messages: [%{role: :user}],
+        metadata: %{}
+      }
+
+      result = Hooks.on_compaction_start(context, Puck.Compaction.SlidingWindow, %{window_size: 20})
+
+      assert result == :ok
+
+      assert_receive {:telemetry, [:beamlens, :compaction, :start], measurements, metadata}
+      assert measurements.message_count == 1
+      assert metadata.trace_id == nil
+      assert metadata.iteration == 0
+      assert metadata.strategy == Puck.Compaction.SlidingWindow
+
+      :telemetry.detach("test-compaction-start-no-meta-#{inspect(ref)}")
+    end
+  end
+
+  describe "on_compaction_end/2" do
+    test "emits compaction stop event with reduced message count" do
+      ref = make_ref()
+      test_pid = self()
+
+      :telemetry.attach(
+        "test-compaction-end-#{inspect(ref)}",
+        [:beamlens, :compaction, :stop],
+        fn event, measurements, metadata, _config ->
+          send(test_pid, {:telemetry, event, measurements, metadata})
+        end,
+        nil
+      )
+
+      context = %Puck.Context{
+        messages: [%{role: :user}],
+        metadata: %{trace_id: "trace-compact-end", iteration: 8}
+      }
+
+      result = Hooks.on_compaction_end(context, %{})
+
+      assert result == :ok
+
+      assert_receive {:telemetry, [:beamlens, :compaction, :stop], measurements, metadata}
+      assert is_integer(measurements.system_time)
+      assert measurements.message_count == 1
+      assert metadata.trace_id == "trace-compact-end"
+      assert metadata.iteration == 8
+
+      :telemetry.detach("test-compaction-end-#{inspect(ref)}")
+    end
+
+    test "handles empty messages list" do
+      ref = make_ref()
+      test_pid = self()
+
+      :telemetry.attach(
+        "test-compaction-end-empty-#{inspect(ref)}",
+        [:beamlens, :compaction, :stop],
+        fn event, measurements, metadata, _config ->
+          send(test_pid, {:telemetry, event, measurements, metadata})
+        end,
+        nil
+      )
+
+      context = %Puck.Context{
+        messages: [],
+        metadata: %{trace_id: "trace-empty", iteration: 0}
+      }
+
+      result = Hooks.on_compaction_end(context, %{})
+
+      assert result == :ok
+
+      assert_receive {:telemetry, [:beamlens, :compaction, :stop], measurements, _metadata}
+      assert measurements.message_count == 0
+
+      :telemetry.detach("test-compaction-end-empty-#{inspect(ref)}")
+    end
+  end
 end

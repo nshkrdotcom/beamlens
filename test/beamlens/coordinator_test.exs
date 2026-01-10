@@ -502,43 +502,6 @@ defmodule Beamlens.CoordinatorTest do
     end
   end
 
-  describe "max iterations" do
-    test "stops loop when max iterations reached" do
-      ref = make_ref()
-      parent = self()
-
-      :telemetry.attach(
-        {ref, :loop_stopped},
-        [:beamlens, :coordinator, :loop_stopped],
-        fn _event, _measurements, metadata, _ ->
-          send(parent, {:telemetry, :loop_stopped, metadata})
-        end,
-        nil
-      )
-
-      {:ok, pid} = start_coordinator()
-
-      alert = build_test_alert()
-      task = Task.async(fn -> :ok end)
-      Task.await(task)
-
-      :sys.replace_state(pid, fn state ->
-        alerts = %{alert.id => %{alert: alert, status: :unread}}
-        %{state | alerts: alerts, iteration: 19, running: true, pending_task: task}
-      end)
-
-      action = %GetAlerts{status: nil}
-      send(pid, {task.ref, {:ok, %{content: action}, Puck.Context.new()}})
-
-      assert_receive {:telemetry, :loop_stopped, %{reason: :max_iterations}}, 1000
-
-      state = :sys.get_state(pid)
-      assert state.running == false
-
-      stop_coordinator(pid)
-      :telemetry.detach({ref, :loop_stopped})
-    end
-  end
 
   describe "error handling" do
     test "LLM error stops loop" do
@@ -758,6 +721,79 @@ defmodule Beamlens.CoordinatorTest do
 
       stop_coordinator(pid)
       :telemetry.detach({ref, :done})
+    end
+  end
+
+  describe "compaction configuration" do
+    defp start_coordinator_for_compaction_test(opts \\ []) do
+      name = Keyword.get(opts, :name, :"coordinator_compaction_#{:erlang.unique_integer([:positive])}")
+      opts = Keyword.put(opts, :name, name)
+      Coordinator.start_link(opts)
+    end
+
+    test "uses default compaction settings when not specified" do
+      {:ok, pid} = start_coordinator_for_compaction_test()
+
+      state = :sys.get_state(pid)
+      client = state.client
+
+      assert client.auto_compaction != nil
+      {:summarize, config} = client.auto_compaction
+      assert Keyword.get(config, :max_tokens) == 50_000
+      assert Keyword.get(config, :keep_last) == 5
+      assert is_binary(Keyword.get(config, :prompt))
+
+      stop_coordinator(pid)
+    end
+
+    test "uses custom compaction_max_tokens when provided" do
+      {:ok, pid} = start_coordinator_for_compaction_test(compaction_max_tokens: 100_000)
+
+      state = :sys.get_state(pid)
+      {:summarize, config} = state.client.auto_compaction
+      assert Keyword.get(config, :max_tokens) == 100_000
+
+      stop_coordinator(pid)
+    end
+
+    test "uses custom compaction_keep_last when provided" do
+      {:ok, pid} = start_coordinator_for_compaction_test(compaction_keep_last: 10)
+
+      state = :sys.get_state(pid)
+      {:summarize, config} = state.client.auto_compaction
+      assert Keyword.get(config, :keep_last) == 10
+
+      stop_coordinator(pid)
+    end
+
+    test "uses both custom compaction settings when provided" do
+      {:ok, pid} =
+        start_coordinator_for_compaction_test(
+          compaction_max_tokens: 75_000,
+          compaction_keep_last: 8
+        )
+
+      state = :sys.get_state(pid)
+      {:summarize, config} = state.client.auto_compaction
+
+      assert Keyword.get(config, :max_tokens) == 75_000
+      assert Keyword.get(config, :keep_last) == 8
+
+      stop_coordinator(pid)
+    end
+
+    test "compaction prompt mentions alert analysis context" do
+      {:ok, pid} = start_coordinator_for_compaction_test()
+
+      state = :sys.get_state(pid)
+      {:summarize, config} = state.client.auto_compaction
+      prompt = Keyword.get(config, :prompt)
+
+      assert prompt =~ "Alert IDs"
+      assert prompt =~ "correlation"
+      assert prompt =~ "Insights"
+
+      stop_coordinator(pid)
     end
   end
 end
