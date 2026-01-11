@@ -6,8 +6,8 @@ defmodule Beamlens.Supervisor do
 
     * `Beamlens.TaskSupervisor` - For async tasks
     * `Beamlens.OperatorRegistry` - Registry for operator processes
-    * `Beamlens.Domain.Logger.LogStore` - Log buffer (when `:logger` operator enabled)
-    * `Beamlens.Domain.Exception.ExceptionStore` - Exception buffer (when `:exception` operator enabled)
+    * `Beamlens.Skill.Logger.LogStore` - Log buffer (when `:logger` operator enabled)
+    * `Beamlens.Skill.Exception.ExceptionStore` - Exception buffer (when `:exception` operator enabled)
     * `Beamlens.AlertForwarder` - Cross-node alert broadcasting (when `:pubsub` provided)
     * `Beamlens.Operator.Supervisor` - DynamicSupervisor for operators
     * `Beamlens.Coordinator` - Alert correlation and insight generation
@@ -54,9 +54,9 @@ defmodule Beamlens.Supervisor do
 
   alias Beamlens.AlertForwarder
   alias Beamlens.Coordinator
-  alias Beamlens.Domain.Exception.ExceptionStore
-  alias Beamlens.Domain.Logger.LogStore
   alias Beamlens.Operator.Supervisor, as: OperatorSupervisor
+  alias Beamlens.Skill.Exception.ExceptionStore
+  alias Beamlens.Skill.Logger.LogStore
 
   def start_link(opts) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
