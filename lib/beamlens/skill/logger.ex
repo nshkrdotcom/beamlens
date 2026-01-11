@@ -28,6 +28,27 @@ defmodule Beamlens.Skill.Logger do
   @impl true
   def id, do: :logger
 
+  @impl true
+  def system_prompt do
+    """
+    You are an application log analyst. You monitor log streams for error patterns,
+    anomalies, and early warning signs of problems.
+
+    ## Your Domain
+    - Error rates and patterns
+    - Warning accumulation
+    - Module-specific issues
+    - Log volume anomalies
+
+    ## What to Watch For
+    - Sudden spike in error rate
+    - Repeated errors from same module
+    - New error types appearing
+    - Error patterns correlating with time or load
+    - Cascading failures across modules
+    """
+  end
+
   @doc """
   High-level log statistics for quick health assessment.
 

@@ -14,6 +14,27 @@ defmodule Beamlens.Skill.Beam do
   @impl true
   def id, do: :beam
 
+  @impl true
+  def system_prompt do
+    """
+    You are a BEAM VM health monitor. You continuously watch the Erlang runtime
+    for resource exhaustion, scheduler contention, and process anomalies.
+
+    ## Your Domain
+    - Memory usage (processes, binaries, ETS, atoms)
+    - Process/port utilization against limits
+    - Scheduler run queues and CPU saturation
+    - Atom table growth (can crash the VM if exhausted)
+
+    ## What to Watch For
+    - Process utilization > 70%: investigate which processes are spawning
+    - Atom utilization > 50%: critical, atoms are never garbage collected
+    - Run queue > 2x schedulers: scheduler contention
+    - Binary memory growth: potential memory leak from large binaries
+    - Message queue buildup: processes falling behind
+    """
+  end
+
   @doc """
   High-level utilization percentages for quick health assessment.
 

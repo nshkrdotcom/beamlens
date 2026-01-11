@@ -8,6 +8,7 @@ defmodule Beamlens.Skill do
   ## Required Callbacks
 
   - `id/0` - Returns the skill identifier atom (e.g., `:beam`)
+  - `system_prompt/0` - Returns the operator's identity and monitoring focus
   - `snapshot/0` - Returns high-level metrics for quick health assessment
   - `callbacks/0` - Returns the Lua sandbox callback map for investigation
   - `callback_docs/0` - Returns markdown documentation for callbacks
@@ -78,6 +79,30 @@ defmodule Beamlens.Skill do
 
   The LLM calls these via Lua code: `redis_top_keys(10, "user:*")`
 
+  ## Writing Effective system_prompt
+
+  The `system_prompt/0` defines the operator's identity and focus. It tells the
+  LLM what domain it monitors and what anomalies to watch for:
+
+      def system_prompt do
+        \"\"\"
+        You are a Redis cache monitor. You track cache health, memory usage,
+        and key distribution patterns.
+
+        ## Your Domain
+        - Cache hit rates and efficiency
+        - Memory usage and eviction pressure
+        - Key distribution and hot spots
+        - Connection pool health
+
+        ## What to Watch For
+        - Hit rate < 90%: cache may be ineffective
+        - Memory usage > 80%: eviction pressure increasing
+        - Hot keys with excessive access patterns
+        - Connection count approaching limit
+        \"\"\"
+      end
+
   ## Writing Effective callback_docs
 
   The `callback_docs/0` string is passed directly to the LLM. Clear, example-rich
@@ -123,6 +148,24 @@ defmodule Beamlens.Skill do
 
         @impl true
         def id, do: :redis
+
+        @impl true
+        def system_prompt do
+          \"\"\"
+          You are a Redis cache monitor. You track cache health, memory usage,
+          and key distribution patterns.
+
+          ## Your Domain
+          - Cache hit rates and efficiency
+          - Memory usage and eviction pressure
+          - Key distribution and hot spots
+
+          ## What to Watch For
+          - Hit rate < 90%: cache may be ineffective
+          - Memory usage > 80%: eviction pressure increasing
+          - Hot keys with excessive access patterns
+          \"\"\"
+        end
 
         @impl true
         def snapshot do
@@ -184,6 +227,7 @@ defmodule Beamlens.Skill do
   """
 
   @callback id() :: atom()
+  @callback system_prompt() :: String.t()
   @callback snapshot() :: map()
   @callback callbacks() :: map()
   @callback callback_docs() :: String.t()

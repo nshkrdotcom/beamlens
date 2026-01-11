@@ -12,6 +12,8 @@ defmodule Beamlens.Evals.LuaSandboxTest do
 
     def id, do: :eval_investigation
 
+    def system_prompt, do: "You are a test skill for Lua sandbox evals."
+
     def snapshot do
       %{
         memory_utilization_pct: 78.5,

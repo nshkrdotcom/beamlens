@@ -35,6 +35,27 @@ if Code.ensure_loaded?(Tower) do
     @impl true
     def id, do: :exception
 
+    @impl true
+    def system_prompt do
+      """
+      You are an exception analyst. You monitor application exceptions and crashes
+      to detect error patterns, recurring issues, and system instability.
+
+      ## Your Domain
+      - Exception types and frequencies
+      - Error vs exit vs throw distribution
+      - Stacktrace analysis
+      - Exception message patterns
+
+      ## What to Watch For
+      - Sudden spike in exception rate
+      - New exception types appearing
+      - Repeated exceptions from same location
+      - Exit signals indicating process crashes
+      - Exceptions correlating with specific operations
+      """
+    end
+
     @doc """
     High-level exception statistics for quick health assessment.
 

@@ -135,6 +135,22 @@ defmodule MyApp.Skills.Redis do
   def id, do: :redis
 
   @impl true
+  def system_prompt do
+    """
+    You are a Redis cache monitor. You track cache health, memory usage,
+    and key distribution patterns.
+
+    ## Your Domain
+    - Cache hit rates and efficiency
+    - Memory usage and eviction pressure
+
+    ## What to Watch For
+    - Hit rate < 90%: cache may be ineffective
+    - Memory usage > 80%: eviction pressure increasing
+    """
+  end
+
+  @impl true
   def snapshot do
     %{
       connected: Redix.command!(:redix, ["PING"]) == "PONG",
@@ -180,10 +196,11 @@ Register your skill:
 
 **Guidelines:**
 
+- Write a clear `system_prompt`—it defines the operator's identity and focus
 - Prefix callbacks with your skill name (`redis_info`, not `info`)
 - Return JSON-safe values (strings, numbers, booleans, lists, maps)
 - Keep snapshots fast—they're called frequently
-- Write clear docs—the LLM uses them to understand your API
+- Write clear `callback_docs`—the LLM uses them to understand your API
 
 ## Telemetry
 

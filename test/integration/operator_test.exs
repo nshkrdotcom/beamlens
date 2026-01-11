@@ -8,6 +8,8 @@ defmodule Beamlens.Integration.OperatorTest do
 
     def id, do: :integration_test
 
+    def system_prompt, do: "You are a test skill for integration tests."
+
     def snapshot do
       %{
         memory_utilization_pct: 45.0,

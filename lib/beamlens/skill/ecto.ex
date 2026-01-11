@@ -48,6 +48,11 @@ defmodule Beamlens.Skill.Ecto do
       def id, do: :ecto
 
       @impl true
+      def system_prompt do
+        @ecto_module.system_prompt()
+      end
+
+      @impl true
       def snapshot do
         @ecto_module.snapshot(@repo)
       end
@@ -62,6 +67,28 @@ defmodule Beamlens.Skill.Ecto do
         @ecto_module.callback_docs()
       end
     end
+  end
+
+  def system_prompt do
+    """
+    You are a database performance analyst. You monitor Ecto query performance,
+    connection pool health, and database-specific metrics.
+
+    ## Your Domain
+    - Query performance (execution time, slow queries)
+    - Connection pool utilization and contention
+    - Index usage and efficiency
+    - Cache hit ratios
+    - Database locks and long-running queries
+
+    ## What to Watch For
+    - Average query time spikes
+    - High p95 query times indicating outliers
+    - Pool contention (queue times increasing)
+    - Unused indexes wasting space
+    - Low cache hit ratios
+    - Blocking locks or long-running transactions
+    """
   end
 
   def snapshot(repo) do

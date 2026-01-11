@@ -13,6 +13,26 @@ defmodule Beamlens.Skill.Ets do
   def id, do: :ets
 
   @impl true
+  def system_prompt do
+    """
+    You are an ETS table analyst. You monitor ETS tables for memory usage,
+    growth patterns, and potential leaks.
+
+    ## Your Domain
+    - Table count and total memory usage
+    - Individual table sizes and memory
+    - Table configuration (type, protection, concurrency settings)
+
+    ## What to Watch For
+    - Tables with unbounded growth: missing cleanup logic
+    - Large tables with no read/write concurrency: potential bottleneck
+    - Public tables: potential for uncontrolled access
+    - Single large table dominating memory: review data structure
+    - Growing table count: potential table leaks
+    """
+  end
+
+  @impl true
   def snapshot do
     tables = :ets.all()
     word_size = :erlang.system_info(:wordsize)

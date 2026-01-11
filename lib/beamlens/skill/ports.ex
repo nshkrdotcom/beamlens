@@ -13,6 +13,27 @@ defmodule Beamlens.Skill.Ports do
   def id, do: :ports
 
   @impl true
+  def system_prompt do
+    """
+    You are a BEAM port monitor. You track ports (file descriptors, sockets,
+    external program connections) for resource leaks and I/O issues.
+
+    ## Your Domain
+    - Port count and utilization against limits
+    - I/O throughput per port (bytes in/out)
+    - Port memory usage
+    - Connected processes
+
+    ## What to Watch For
+    - Port utilization > 70%: risk of exhausting file descriptors
+    - Ports with high input but no output: potential blocked readers
+    - Ports with growing queue sizes: I/O backpressure
+    - Orphaned ports: connected process may have died
+    - Sudden port count increases: potential leak
+    """
+  end
+
+  @impl true
   def snapshot do
     ports = Port.list()
     limit = :erlang.system_info(:port_limit)

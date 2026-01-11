@@ -68,12 +68,11 @@ class Think {
 }
 
 // Main operator loop function
-function OperatorLoop(messages: Message[], callback_docs: string) -> SetState | FireAlert | GetAlerts | TakeSnapshot | GetSnapshot | GetSnapshots | Execute | Wait | Think {
+function OperatorLoop(messages: Message[], system_prompt: string, callback_docs: string) -> SetState | FireAlert | GetAlerts | TakeSnapshot | GetSnapshot | GetSnapshots | Execute | Wait | Think {
   client Default
   prompt #"
 {{ _.role("system") }}
-You are a system operator agent running continuously. Your job is to monitor
-your assigned domain, detect anomalies, and alert when necessary.
+{{ system_prompt }}
 
 ## State Model
 You have a state that reflects your current assessment:
@@ -166,6 +165,7 @@ test OperatorLoop_CallsTakeSnapshot {
     messages [
       { role "user", content "Current state: healthy" }
     ]
+    system_prompt "You are a BEAM VM health monitor."
     callback_docs #"
 ### beam_get_memory()
 Memory stats in MB: total_mb, processes_mb, system_mb, binary_mb, ets_mb, code_mb
@@ -190,6 +190,7 @@ test OperatorLoop_HealthySnapshot {
       { role "user", content #"Current state: healthy"# },
       { role "user", content #"{"id":"abc123","captured_at":"2024-01-06T10:30:00Z","data":{"process_utilization_pct":12.1,"port_utilization_pct":3.4,"atom_utilization_pct":8.9,"scheduler_run_queue":0,"schedulers_online":8}}"# }
     ]
+    system_prompt "You are a BEAM VM health monitor."
     callback_docs #"
 ### beam_get_memory()
 Memory stats in MB: total_mb, processes_mb, system_mb, binary_mb, ets_mb, code_mb
@@ -212,6 +213,7 @@ test OperatorLoop_HighProcessUtilization_Investigates {
       { role "user", content #"Current state: healthy"# },
       { role "user", content #"{"id":"abc123","captured_at":"2024-01-06T10:30:00Z","data":{"process_utilization_pct":78.5,"port_utilization_pct":3.4,"atom_utilization_pct":8.9,"scheduler_run_queue":0,"schedulers_online":8}}"# }
     ]
+    system_prompt "You are a BEAM VM health monitor. Process utilization > 70% warrants investigation."
     callback_docs #"
 ### beam_get_processes()
 Process/port counts: process_count, process_limit, port_count, port_limit
@@ -237,6 +239,7 @@ test OperatorLoop_CriticalAtomUtilization_Alerts {
       { role "user", content #"{"id":"snap1","captured_at":"2024-01-06T10:30:00Z","data":{"process_utilization_pct":12.1,"port_utilization_pct":3.4,"atom_utilization_pct":85.0,"scheduler_run_queue":0,"schedulers_online":8}}"# },
       { role "user", content #"{"id":"snap2","captured_at":"2024-01-06T10:30:30Z","data":{"process_utilization_pct":12.1,"port_utilization_pct":3.4,"atom_utilization_pct":92.5,"scheduler_run_queue":0,"schedulers_online":8}}"# }
     ]
+    system_prompt "You are a BEAM VM health monitor. Atom utilization > 50% is critical - atoms are never garbage collected."
     callback_docs #"
 ### beam_get_atoms()
 Atom table: atom_count, atom_limit, atom_mb, atom_used_mb
@@ -260,6 +263,7 @@ test OperatorLoop_SchedulerContention {
       { role "user", content #"Current state: healthy"# },
       { role "user", content #"{"id":"abc123","captured_at":"2024-01-06T10:30:00Z","data":{"process_utilization_pct":12.1,"port_utilization_pct":3.4,"atom_utilization_pct":8.9,"scheduler_run_queue":85,"schedulers_online":8}}"# }
     ]
+    system_prompt "You are a BEAM VM health monitor. Run queue > 2x schedulers indicates contention."
     callback_docs #"
 ### beam_get_schedulers()
 Scheduler stats: schedulers, schedulers_online, run_queue

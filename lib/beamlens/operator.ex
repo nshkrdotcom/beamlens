@@ -438,6 +438,7 @@ defmodule Beamlens.Operator do
   end
 
   defp build_puck_client(skill, client_registry, opts) do
+    system_prompt = skill.system_prompt()
     callback_docs = skill.callback_docs()
 
     backend_config =
@@ -447,6 +448,7 @@ defmodule Beamlens.Operator do
         args: fn messages ->
           %{
             messages: Utils.format_messages_for_baml(messages),
+            system_prompt: system_prompt,
             callback_docs: callback_docs
           }
         end,

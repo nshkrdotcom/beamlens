@@ -13,6 +13,26 @@ defmodule Beamlens.Skill.Sup do
   def id, do: :sup
 
   @impl true
+  def system_prompt do
+    """
+    You are a supervision tree analyst. You monitor the structure and health
+    of OTP supervision trees to detect process failures and restart patterns.
+
+    ## Your Domain
+    - Supervisor hierarchy and structure
+    - Child process counts and states
+    - Active vs inactive children
+
+    ## What to Watch For
+    - Children in :restarting state: crash loops
+    - Undefined child PIDs: failed starts
+    - Supervisors with many children: potential bottleneck
+    - Asymmetric tree depth: architectural issues
+    - Missing expected supervisors: startup failures
+    """
+  end
+
+  @impl true
   def snapshot do
     supervisors = find_supervisors()
 

@@ -13,6 +13,26 @@ defmodule Beamlens.Skill.Gc do
   def id, do: :gc
 
   @impl true
+  def system_prompt do
+    """
+    You are a garbage collection analyst. You monitor GC activity to detect
+    memory pressure and inefficient allocation patterns.
+
+    ## Your Domain
+    - Global GC statistics (collection count, words reclaimed)
+    - Per-process heap sizes and GC frequency
+    - Processes with large heaps causing GC pressure
+
+    ## What to Watch For
+    - Processes with unusually large heaps
+    - High minor GC counts: frequent small allocations
+    - Large total_heap vs heap_size: fragmentation
+    - Message queue growth with large heaps: process falling behind
+    - Processes avoiding fullsweep: potential memory bloat
+    """
+  end
+
+  @impl true
   def snapshot do
     {gcs, words, _} = :erlang.statistics(:garbage_collection)
     word_size = :erlang.system_info(:wordsize)
