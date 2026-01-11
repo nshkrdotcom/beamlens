@@ -169,6 +169,27 @@ defmodule Beamlens.Operator.Supervisor do
     Map.keys(@builtin_skills)
   end
 
+  @doc """
+  Returns all configured operator names.
+
+  This includes both built-in skills (specified as atoms) and custom skills
+  (specified as keyword lists with `:name` key). Useful for discovering
+  all operators that could be started, including custom skills.
+
+  ## Example
+
+      iex> Beamlens.Operator.Supervisor.configured_operators()
+      [:beam, :ets, :my_custom_skill]
+
+  """
+  def configured_operators do
+    Application.get_env(:beamlens, :operators, [])
+    |> Enum.map(&extract_operator_name/1)
+  end
+
+  defp extract_operator_name(skill) when is_atom(skill), do: skill
+  defp extract_operator_name(opts) when is_list(opts), do: Keyword.fetch!(opts, :name)
+
   defp via_registry(name) do
     {:via, Registry, {Beamlens.OperatorRegistry, name}}
   end

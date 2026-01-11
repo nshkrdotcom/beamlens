@@ -12,40 +12,173 @@ defmodule Beamlens.Skill do
   - `callbacks/0` - Returns the Lua sandbox callback map for investigation
   - `callback_docs/0` - Returns markdown documentation for callbacks
 
-  ## Example
+  ## Configuration
 
-      defmodule MyApp.Skills.Database do
+  Register your custom skill in your application's config:
+
+      config :beamlens,
+        operators: [
+          :beam,  # built-in skill
+          [name: :redis, skill_module: MyApp.Skills.Redis]
+        ]
+
+  Or start it dynamically:
+
+      Beamlens.Operator.Supervisor.start_operator([
+        name: :redis,
+        skill_module: MyApp.Skills.Redis
+      ])
+
+  ## Callback Naming Conventions
+
+  Prefix callback names with your skill identifier to avoid collisions:
+
+      # Good - prefixed with skill name
+      %{
+        "redis_get_info" => &get_info/0,
+        "redis_top_keys" => &top_keys/1
+      }
+
+      # Avoid - generic names may collide
+      %{
+        "get_info" => &get_info/0,
+        "top_keys" => &top_keys/1
+      }
+
+  ## Return Type Requirements
+
+  All callback return values and snapshot data must be JSON-serializable.
+
+  **Supported types:**
+  - Strings, integers, floats, booleans
+  - Lists (arrays)
+  - Maps with string or atom keys
+  - `nil`
+
+  **Not supported:**
+  - Tuples (use lists instead)
+  - PIDs, references, ports
+  - Structs (convert to maps)
+  - Functions
+
+  ## Callback Arity Patterns
+
+  Callbacks can accept 0, 1, or 2 arguments from Lua:
+
+      %{
+        # No arguments
+        "redis_get_info" => fn -> get_info() end,
+
+        # Single argument
+        "redis_get_key" => fn key -> get_key(key) end,
+
+        # Two arguments (limit, pattern)
+        "redis_top_keys" => fn limit, pattern -> top_keys(limit, pattern) end
+      }
+
+  The LLM calls these via Lua code: `redis_top_keys(10, "user:*")`
+
+  ## Writing Effective callback_docs
+
+  The `callback_docs/0` string is passed directly to the LLM. Clear, example-rich
+  documentation helps the LLM use your callbacks effectively:
+
+      def callback_docs do
+        \"\"\"
+        ### redis_get_info()
+        Returns Redis server information including memory usage, connected clients,
+        and uptime.
+
+        Example response:
+        ```
+        {memory_used_mb: 125.5, connected_clients: 42, uptime_seconds: 86400}
+        ```
+
+        ### redis_top_keys(limit, pattern)
+        Returns the top N keys by memory usage matching the given pattern.
+
+        Parameters:
+        - limit: Number of keys to return (default: 10)
+        - pattern: Glob pattern to filter keys (default: "*")
+
+        Example: `redis_top_keys(5, "session:*")` returns top 5 session keys
+        \"\"\"
+      end
+
+  ## Skills with Background Data Collection
+
+  If your skill needs to collect data over time (like log aggregation), you'll
+  need a background process. See `Beamlens.Skill.Logger` for an example pattern
+  using a GenServer store.
+
+  Key pattern:
+  1. Create a GenServer to collect/store data (e.g., `MyApp.Skills.Redis.Store`)
+  2. Start it in your application's supervision tree
+  3. Have callbacks query the store
+
+  ## Complete Example
+
+      defmodule MyApp.Skills.Redis do
         @behaviour Beamlens.Skill
 
         @impl true
-        def id, do: :database
+        def id, do: :redis
 
         @impl true
         def snapshot do
-          %{
-            connection_pool_utilization_pct: 45.2,
-            query_queue_length: 0,
-            active_connections: 5
-          }
+          case Redix.command(:redix, ["INFO"]) do
+            {:ok, info} ->
+              parsed = parse_redis_info(info)
+              %{
+                memory_used_mb: parsed.used_memory / 1_000_000,
+                connected_clients: parsed.connected_clients,
+                ops_per_sec: parsed.instantaneous_ops_per_sec,
+                hit_rate_pct: calculate_hit_rate(parsed)
+              }
+
+            {:error, _} ->
+              %{error: "Redis connection failed"}
+          end
         end
 
         @impl true
         def callbacks do
           %{
-            "get_pool_stats" => &pool_stats/0,
-            "get_slow_queries" => &slow_queries/0
+            "redis_get_info" => fn -> get_info() end,
+            "redis_slow_log" => fn count -> slow_log(count) end,
+            "redis_top_keys" => fn limit, pattern -> top_keys(limit, pattern) end
           }
         end
 
         @impl true
         def callback_docs do
           \"\"\"
-          ### get_pool_stats()
-          Connection pool statistics: size, available, in_use
+          ### redis_get_info()
+          Full Redis INFO output as a map.
 
-          ### get_slow_queries()
-          Queries exceeding 100ms threshold
+          ### redis_slow_log(count)
+          Returns the N most recent slow queries from Redis SLOWLOG.
+          - count: Number of entries (default: 10)
+
+          ### redis_top_keys(limit, pattern)
+          Scans for keys matching pattern and returns top N by memory.
+          - limit: Max keys to return
+          - pattern: Glob pattern (e.g., "user:*", "cache:*")
+
+          Note: Uses SCAN, safe for production but may be slow on large datasets.
           \"\"\"
+        end
+
+        defp get_info do
+          # Implementation
+        end
+
+        defp slow_log(count) do
+          # Implementation
+        end
+
+        defp top_keys(limit, pattern) do
+          # Implementation
         end
       end
   """

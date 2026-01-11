@@ -8,7 +8,7 @@ Your alerting fires at 3am. Memory is spiking. By the time you open your laptop 
 
 Even when you have the data, you're the one connecting the dots—cross-referencing metrics with logs, building the picture manually.
 
-BeamLens closes that gap for application-level issues. Autonomous watchers monitor specific domains using LLM-driven loops. When one detects an anomaly, it investigates immediately—gathering snapshots, executing diagnostic code, and firing alerts while the system state is still live. You get structured alerts with supporting evidence, not scattered data points to assemble yourself.
+BeamLens closes that gap for application-level issues. Autonomous operators monitor specific skills using LLM-driven loops. When one detects an anomaly, it investigates immediately—gathering snapshots, executing diagnostic code, and firing alerts while the system state is still live. You get structured alerts with supporting evidence, not scattered data points to assemble yourself.
 
 This isn't distributed tracing across services. It's deep introspection within your application—runtime context that generic APM tools can't access. Every operation is read-only by design. Your data stays in your infrastructure. You choose the model provider you trust.
 
@@ -30,13 +30,13 @@ Investigate ETS table growth, potentially from cache or session storage."
 
 ## How It Works
 
-Each watcher runs a continuous LLM-driven loop. The LLM monitors snapshots, investigates anomalies using Lua code execution in a sandbox, and fires alerts via telemetry when issues are detected.
+Each operator runs a continuous LLM-driven loop. The LLM monitors snapshots, investigates anomalies using Lua code execution in a sandbox, and fires alerts via telemetry when issues are detected.
 
 ```
-Watcher → LLM Loop → Telemetry Events
+Operator → LLM Loop → Telemetry Events
 ```
 
-The watcher maintains state reflecting its current assessment:
+The operator maintains state reflecting its current assessment:
 - **healthy** — Everything is normal
 - **observing** — Something looks off, gathering more data
 - **warning** — Elevated concern, not yet critical
@@ -44,7 +44,7 @@ The watcher maintains state reflecting its current assessment:
 
 **What makes this different:**
 
-- **Deep runtime access** — Watchers can see what generic APM tools can't: BEAM internals, database connection states, queue depths, whatever the domain exposes
+- **Deep runtime access** — Operators can see what generic APM tools can't: BEAM internals, database connection states, queue depths, whatever the skill exposes
 - **Supplements your stack** — Works alongside Prometheus, Datadog, AppSignal, Sentry
 - **Bring your own model** — Anthropic, OpenAI, Ollama, AWS Bedrock, and more
 
@@ -69,16 +69,16 @@ Add to your supervision tree:
 ```elixir
 def start(_type, _args) do
   children = [
-    {Beamlens, watchers: [:beam]}
+    {Beamlens, operators: [:beam]}
   ]
 
   Supervisor.start_link(children, strategy: :one_for_one)
 end
 ```
 
-## Built-in Watchers
+## Built-in Operators
 
-| Watcher | Description |
+| Operator | Description |
 |---------|-------------|
 | `:beam` | BEAM VM metrics (memory, processes, schedulers, atoms) |
 | `:ets` | ETS table monitoring (counts, memory, largest tables) |
@@ -87,16 +87,16 @@ end
 | `:ports` | Port monitoring (file descriptors, sockets) |
 | `:sup` | Supervisor tree monitoring |
 | `:system` | OS-level metrics (CPU load, memory, disk usage via os_mon) |
-| `:ecto` | Database monitoring (requires custom domain module, see below) |
+| `:ecto` | Database monitoring (requires custom skill module, see below) |
 | `:exception` | Exception tracking via Tower (error patterns, stacktraces) |
 
-Start multiple watchers:
+Start multiple operators:
 
 ```elixir
-{Beamlens, watchers: [:beam, :ets, :gc, :ports, :sup]}
+{Beamlens, operators: [:beam, :ets, :gc, :ports, :sup]}
 ```
 
-Each watcher runs independently with its own LLM context, monitoring its specific domain.
+Each operator runs independently with its own LLM context, monitoring its specific skill.
 
 ### Ecto Skill
 
@@ -162,10 +162,81 @@ config :tower,
 
 > **Note:** Exception messages and stacktraces may contain sensitive data (file paths, variable values). Ensure your exception handling does not expose PII before enabling this operator.
 
+## Creating Custom Skills
+
+Build your own skills to monitor application-specific domains. A skill provides:
+- **Snapshot** — Quick metrics for health assessment
+- **Callbacks** — Functions the LLM can call for deeper investigation
+- **Documentation** — Guides the LLM on available callbacks
+
+### Minimal Example
+
+```elixir
+defmodule MyApp.Skills.Redis do
+  @behaviour Beamlens.Skill
+
+  @impl true
+  def id, do: :redis
+
+  @impl true
+  def snapshot do
+    %{
+      connected: Redix.command!(:redix, ["PING"]) == "PONG",
+      memory_used_mb: get_memory_mb(),
+      connected_clients: get_client_count()
+    }
+  end
+
+  @impl true
+  def callbacks do
+    %{
+      "redis_info" => fn -> get_info() end,
+      "redis_slowlog" => fn count -> get_slowlog(count) end
+    }
+  end
+
+  @impl true
+  def callback_docs do
+    """
+    ### redis_info()
+    Full Redis INFO as a map.
+
+    ### redis_slowlog(count)
+    Returns recent slow queries. `count` limits results (default: 10).
+    """
+  end
+
+  defp get_info, do: # ...
+  defp get_slowlog(count), do: # ...
+  defp get_memory_mb, do: # ...
+  defp get_client_count, do: # ...
+end
+```
+
+### Register Your Skill
+
+```elixir
+{Beamlens, operators: [
+  :beam,
+  [name: :redis, skill_module: MyApp.Skills.Redis]
+]}
+```
+
+Custom skills appear in the BeamLens web dashboard alongside built-in skills.
+
+### Key Guidelines
+
+- **Prefix callbacks** with your skill name (`redis_info`, not `info`)
+- **Return JSON-safe values** — strings, numbers, booleans, lists, maps only
+- **Keep snapshots fast** — called frequently for health checks
+- **Write clear docs** — the LLM uses `callback_docs` to understand your API
+
+See `Beamlens.Skill` module documentation for complete details on callback patterns and advanced topics.
+
 Subscribe to alerts via telemetry:
 
 ```elixir
-:telemetry.attach("my-alerts", [:beamlens, :watcher, :alert_fired], fn
+:telemetry.attach("my-alerts", [:beamlens, :operator, :alert_fired], fn
   _event, _measurements, %{alert: alert}, _config ->
     Logger.warning("BeamLens alert: #{alert.summary}")
 end, nil)
@@ -173,7 +244,7 @@ end, nil)
 
 ## Alert Correlation
 
-The Coordinator receives alerts from all watchers and correlates them into unified insights. When multiple alerts occur together, the Coordinator identifies patterns and produces insights explaining how they're related.
+The Coordinator receives alerts from all operators and correlates them into unified insights. When multiple alerts occur together, the Coordinator identifies patterns and produces insights explaining how they're related.
 
 Correlation types:
 - **temporal** — Alerts occurred close in time, possibly related
@@ -193,9 +264,9 @@ end, nil)
 
 ### Compaction
 
-Watchers and the coordinator use context compaction to run indefinitely without exceeding the LLM's context window. When the context grows too large, it's summarized while preserving key information.
+Operators and the coordinator use context compaction to run indefinitely without exceeding the LLM's context window. When the context grows too large, it's summarized while preserving key information.
 
-Configure compaction per-watcher or globally:
+Configure compaction per-operator or globally:
 
 ```elixir
 {Beamlens, operators: [
