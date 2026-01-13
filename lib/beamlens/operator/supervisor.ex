@@ -28,7 +28,7 @@ defmodule Beamlens.Operator.Supervisor do
     * `:compaction_max_tokens` - Token threshold before compaction (default: 50,000)
     * `:compaction_keep_last` - Messages to keep after compaction (default: 5)
 
-  For one-shot analysis instead of continuous monitoring, use `Beamlens.Operator.run/3`.
+  For one-shot analysis instead of continuous monitoring, use `Beamlens.Operator.run/2`.
 
   ## Example with Compaction
 

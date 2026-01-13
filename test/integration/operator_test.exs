@@ -198,8 +198,8 @@ defmodule Beamlens.Integration.OperatorTest do
     end
 
     @tag timeout: 60_000
-    test "run/3 returns notifications when analysis completes", context do
-      {:ok, notifications} = Operator.run(TestSkill, context.client_registry)
+    test "run/2 returns notifications when analysis completes", context do
+      {:ok, notifications} = Operator.run(TestSkill, client_registry: context.client_registry)
 
       assert is_list(notifications)
     end

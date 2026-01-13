@@ -36,11 +36,10 @@ defmodule Beamlens.Coordinator do
 
   ## On-Demand Mode
 
-  For one-shot analysis, use `run/3` which spawns a temporary coordinator,
-  analyzes notifications, and returns results:
+  For one-shot analysis, use `run/2` which spawns a temporary coordinator,
+  invokes operators as needed, and returns results:
 
-      {:ok, result} = Beamlens.Coordinator.run(notifications, client_registry,
-        context: %{reason: "health check"})
+      {:ok, result} = Beamlens.Coordinator.run(%{reason: "memory alert triggered"})
 
       # result contains:
       # %{insights: [...], operator_results: [...]}
@@ -117,20 +116,22 @@ defmodule Beamlens.Coordinator do
   @doc """
   Runs a one-shot coordinator analysis and returns results.
 
-  Spawns a temporary coordinator in on-demand mode, processes notifications,
+  Spawns a temporary coordinator in on-demand mode, invokes operators as needed,
   and blocks until analysis is complete.
 
   ## Arguments
 
-    * `notifications` - List of `Notification` structs to analyze
-    * `client_registry` - LLM provider configuration map
+    * `context` - Map with context for the investigation (e.g., `%{reason: "memory alert"}`)
     * `opts` - Options passed to coordinator
 
   ## Options
 
-    * `:context` - Map with context to pass to the LLM (optional)
+    * `:context` - Map with context (alternative to first argument)
+    * `:notifications` - List of `Notification` structs to analyze (default: `[]`)
+    * `:client_registry` - LLM provider configuration map (default: `%{}`)
     * `:max_iterations` - Maximum iterations before stopping (default: 10)
     * `:timeout` - Timeout for await in milliseconds (default: 300_000)
+    * `:skills` - List of skill atoms to make available (default: configured operators or all builtins)
 
   ## Returns
 
@@ -144,8 +145,43 @@ defmodule Beamlens.Coordinator do
         operator_results: [map()]
       }
 
+  ## Examples
+
+      # With specific skills (no pre-configuration needed)
+      {:ok, result} = Beamlens.Coordinator.run(%{reason: "memory alert"},
+        skills: [:beam, :ets, :system]
+      )
+
+      # Use all builtins when no operators configured
+      {:ok, result} = Beamlens.Coordinator.run(%{reason: "health check"})
+
+      # Context in opts
+      {:ok, result} = Beamlens.Coordinator.run(context: %{reason: "memory alert"})
+
+      # With existing notifications
+      {:ok, result} = Beamlens.Coordinator.run(%{reason: "investigating spike"},
+        notifications: existing_notifications
+      )
+
+      # With custom LLM provider
+      {:ok, result} = Beamlens.Coordinator.run(%{reason: "health check"},
+        client_registry: %{primary: "Ollama", clients: [...]}
+      )
+
   """
-  def run(notifications, client_registry, opts \\ []) do
+  def run(opts) when is_list(opts) do
+    {context, opts} = Keyword.pop(opts, :context, %{})
+    run(context, opts)
+  end
+
+  def run(context) when is_map(context) do
+    run(context, [])
+  end
+
+  def run(context, opts) when is_map(context) and is_list(opts) do
+    {notifications, opts} = Keyword.pop(opts, :notifications, [])
+    {client_registry, opts} = Keyword.pop(opts, :client_registry, %{})
+    {skills, opts} = Keyword.pop(opts, :skills, nil)
     timeout = Keyword.get(opts, :timeout, 300_000)
 
     coordinator_opts =
@@ -153,6 +189,9 @@ defmodule Beamlens.Coordinator do
       |> Keyword.put(:mode, :on_demand)
       |> Keyword.put(:client_registry, client_registry)
       |> Keyword.put(:initial_notifications, notifications)
+      |> Keyword.put(:context, context)
+      |> Keyword.put(:skills, skills)
+      |> Keyword.put_new(:name, nil)
 
     {:ok, pid} = start_link(coordinator_opts)
 
@@ -748,14 +787,15 @@ defmodule Beamlens.Coordinator do
   end
 
   defp build_puck_client(client_registry, mode, opts) do
-    operator_descriptions = build_operator_descriptions()
+    skills = Keyword.get(opts, :skills)
+    operator_descriptions = build_operator_descriptions(skills)
     function_name = baml_function(mode)
 
     backend_config =
       %{
         function: function_name,
         args_format: :auto,
-        args: build_args_fn(mode, operator_descriptions),
+        args: build_args_fn(mode, operator_descriptions, skills),
         path: Application.app_dir(:beamlens, "priv/baml_src")
       }
       |> Utils.maybe_add_client_registry(client_registry)
@@ -770,7 +810,7 @@ defmodule Beamlens.Coordinator do
   defp baml_function(:continuous), do: "CoordinatorLoop"
   defp baml_function(:on_demand), do: "CoordinatorRun"
 
-  defp build_args_fn(:continuous, operator_descriptions) do
+  defp build_args_fn(:continuous, operator_descriptions, _skills) do
     fn messages ->
       %{
         messages: Utils.format_messages_for_baml(messages),
@@ -779,8 +819,8 @@ defmodule Beamlens.Coordinator do
     end
   end
 
-  defp build_args_fn(:on_demand, operator_descriptions) do
-    available_skills = build_available_skills()
+  defp build_args_fn(:on_demand, operator_descriptions, skills) do
+    available_skills = build_available_skills(skills)
 
     fn messages ->
       %{
@@ -791,16 +831,41 @@ defmodule Beamlens.Coordinator do
     end
   end
 
-  defp build_available_skills do
-    Operator.Supervisor.configured_operators()
-    |> Enum.map_join(", ", &to_string/1)
+  defp build_available_skills(nil) do
+    case Operator.Supervisor.configured_operators() do
+      [] ->
+        Operator.Supervisor.builtin_skills()
+        |> Enum.map_join(", ", &to_string/1)
+
+      operators ->
+        Enum.map_join(operators, ", ", &to_string/1)
+    end
   end
 
-  defp build_operator_descriptions do
-    operators = Application.get_env(:beamlens, :operators, [])
+  defp build_available_skills(skills) when is_list(skills) do
+    Enum.map_join(skills, ", ", &to_string/1)
+  end
 
-    operators
-    |> Enum.map(&Beamlens.Operator.Supervisor.resolve_skill/1)
+  defp build_operator_descriptions(nil) do
+    case Application.get_env(:beamlens, :operators, []) do
+      [] ->
+        build_descriptions_for_skills(Operator.Supervisor.builtin_skills())
+
+      operators ->
+        operators
+        |> Enum.map(&Operator.Supervisor.resolve_skill/1)
+        |> Enum.filter(&match?({:ok, _}, &1))
+        |> Enum.map_join("\n", fn {:ok, {name, skill}} -> "- #{name}: #{skill.description()}" end)
+    end
+  end
+
+  defp build_operator_descriptions(skills) when is_list(skills) do
+    build_descriptions_for_skills(skills)
+  end
+
+  defp build_descriptions_for_skills(skills) do
+    skills
+    |> Enum.map(&Operator.Supervisor.resolve_skill/1)
     |> Enum.filter(&match?({:ok, _}, &1))
     |> Enum.map_join("\n", fn {:ok, {name, skill}} -> "- #{name}: #{skill.description()}" end)
   end

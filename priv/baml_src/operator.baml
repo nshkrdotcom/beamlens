@@ -3,7 +3,7 @@
 // ============================================================================
 // Agent tools for two execution modes:
 // - OperatorLoop: For GenServer continuous monitoring (runs forever with wait())
-// - OperatorRun: For run/3 one-shot analysis (runs until done() is called)
+// - OperatorRun: For run/2 one-shot analysis (runs until done() is called)
 //
 // Message class for conversation history
 class Message {
@@ -182,7 +182,7 @@ What action do you want to take?
 // ============================================================================
 // ONE-SHOT RUN MODE
 // ============================================================================
-// For run/3 - runs until LLM calls done() to signal completion
+// For run/2 - runs until LLM calls done() to signal completion
 
 function OperatorRun(messages: Message[], system_prompt: string, callback_docs: string) -> SetState | SendNotification | GetNotifications | TakeSnapshot | GetSnapshot | GetSnapshots | Execute | Wait | Think | Done {
   client Default
@@ -352,7 +352,7 @@ Top N processes by "memory", "message_queue", or "reductions"
   }})
 }
 
-// OperatorRun tests (for run/3)
+// OperatorRun tests (for run/2)
 test OperatorRun_CallsTakeSnapshot {
   functions [OperatorRun]
   args {

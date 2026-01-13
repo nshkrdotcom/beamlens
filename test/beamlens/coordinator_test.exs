@@ -1663,6 +1663,63 @@ defmodule Beamlens.CoordinatorTest do
     end
   end
 
+  describe "run/1 and run/2 API variations" do
+    test "run/1 with keyword list delegates to run/2" do
+      opts = [context: %{reason: "test"}, timeout: 100]
+      {context, remaining} = Keyword.pop(opts, :context, %{})
+
+      assert context == %{reason: "test"}
+      assert remaining == [timeout: 100]
+    end
+
+    test "run/1 with map context delegates to run/2 with empty opts" do
+      context = %{reason: "test"}
+      assert is_map(context)
+    end
+
+    test "run/2 extracts notifications from opts" do
+      notification = build_test_notification()
+      opts = [notifications: [notification], timeout: 100]
+      {notifications, remaining} = Keyword.pop(opts, :notifications, [])
+
+      assert notifications == [notification]
+      assert remaining == [timeout: 100]
+    end
+
+    test "run/2 extracts skills from opts" do
+      opts = [skills: [:beam, :ets], timeout: 100]
+      {skills, remaining} = Keyword.pop(opts, :skills, nil)
+
+      assert skills == [:beam, :ets]
+      assert remaining == [timeout: 100]
+    end
+
+    test "run/2 extracts client_registry from opts" do
+      client_registry = %{primary: "Test", clients: []}
+      opts = [client_registry: client_registry, timeout: 100]
+      {extracted, remaining} = Keyword.pop(opts, :client_registry, %{})
+
+      assert extracted == client_registry
+      assert remaining == [timeout: 100]
+    end
+
+    test "start_link accepts skills option" do
+      {:ok, pid} = start_coordinator(mode: :on_demand, skills: [:beam, :ets])
+
+      assert Process.alive?(pid)
+
+      stop_coordinator(pid)
+    end
+
+    test "start_link works without skills option" do
+      {:ok, pid} = start_coordinator(mode: :on_demand)
+
+      assert Process.alive?(pid)
+
+      stop_coordinator(pid)
+    end
+  end
+
   describe "operator completion flow" do
     test "operator_complete message merges notifications" do
       {:ok, pid} = start_coordinator(mode: :on_demand)

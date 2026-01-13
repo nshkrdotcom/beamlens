@@ -44,7 +44,11 @@ defmodule Beamlens.Integration.CoordinatorOperatorTest do
       end)
 
       {:ok, result} =
-        Coordinator.run([], context.client_registry, max_iterations: 15, timeout: 120_000)
+        Coordinator.run(%{},
+          client_registry: context.client_registry,
+          max_iterations: 15,
+          timeout: 120_000
+        )
 
       assert is_map(result)
       assert Map.has_key?(result, :insights)
@@ -100,7 +104,9 @@ defmodule Beamlens.Integration.CoordinatorOperatorTest do
       ]
 
       {:ok, result} =
-        Coordinator.run(notifications, context.client_registry,
+        Coordinator.run(%{},
+          notifications: notifications,
+          client_registry: context.client_registry,
           max_iterations: 20,
           timeout: 180_000
         )
@@ -135,7 +141,9 @@ defmodule Beamlens.Integration.CoordinatorOperatorTest do
       ]
 
       {:ok, result} =
-        Coordinator.run(notifications, context.client_registry,
+        Coordinator.run(%{},
+          notifications: notifications,
+          client_registry: context.client_registry,
           max_iterations: 25,
           timeout: 180_000
         )

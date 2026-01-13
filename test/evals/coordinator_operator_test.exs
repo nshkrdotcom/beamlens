@@ -40,7 +40,11 @@ defmodule Beamlens.Evals.CoordinatorOperatorTest do
         Puck.Eval.collect(
           fn ->
             {:ok, _result} =
-              Coordinator.run([], context.client_registry, max_iterations: 15, timeout: 120_000)
+              Coordinator.run(%{},
+                client_registry: context.client_registry,
+                max_iterations: 15,
+                timeout: 120_000
+              )
 
             :ok
           end,
@@ -72,7 +76,9 @@ defmodule Beamlens.Evals.CoordinatorOperatorTest do
         Puck.Eval.collect(
           fn ->
             {:ok, _result} =
-              Coordinator.run(notifications, context.client_registry,
+              Coordinator.run(%{},
+                notifications: notifications,
+                client_registry: context.client_registry,
                 max_iterations: 15,
                 timeout: 180_000
               )
@@ -115,7 +121,9 @@ defmodule Beamlens.Evals.CoordinatorOperatorTest do
         Puck.Eval.collect(
           fn ->
             {:ok, _result} =
-              Coordinator.run(notifications, context.client_registry,
+              Coordinator.run(%{},
+                notifications: notifications,
+                client_registry: context.client_registry,
                 max_iterations: 25,
                 timeout: 180_000
               )

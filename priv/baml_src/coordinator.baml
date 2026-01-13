@@ -139,7 +139,7 @@ What action do you want to take?
 // ============================================================================
 // ON-DEMAND MODE
 // ============================================================================
-// For run/3 - runs until LLM calls done() to signal completion.
+// For run/2 - runs until LLM calls done() to signal completion.
 // Includes tools for spawning operators, messaging them, and checking status.
 
 function CoordinatorRun(messages: Message[], operator_descriptions: string, available_skills: string) -> CoordinatorGetNotifications | CoordinatorUpdateNotificationStatuses | CoordinatorProduceInsight | CoordinatorDone | CoordinatorThink | CoordinatorInvokeOperators | CoordinatorMessageOperator | CoordinatorGetOperatorStatuses | CoordinatorWait {

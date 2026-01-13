@@ -4,15 +4,18 @@ defmodule Beamlens.Operator do
 
   Provides two ways to run operators:
 
-  - **`run/3`** - On-demand analysis that returns when the LLM calls `done()`
+  - **`run/2`** - On-demand analysis that returns when the LLM calls `done()`
   - **GenServer** - Continuous monitoring that runs forever with `wait()` for pacing
 
-  ## On-Demand Analysis with `run/3`
+  ## On-Demand Analysis with `run/2`
 
   For scheduled or triggered analysis (e.g., Oban workers):
 
-      {:ok, notifications} = Beamlens.Operator.run(:beam, client_registry,
-        context: %{reason: "high memory detected"}
+      {:ok, notifications} = Beamlens.Operator.run(:beam, %{reason: "high memory detected"})
+
+      # With custom LLM provider
+      {:ok, notifications} = Beamlens.Operator.run(:beam, %{reason: "high memory"},
+        client_registry: custom_registry
       )
 
   The LLM investigates and calls `done()` when finished, returning the
@@ -159,12 +162,13 @@ defmodule Beamlens.Operator do
   ## Arguments
 
     * `skill` - Module implementing `Beamlens.Skill`, or atom for built-in skill
-    * `client_registry` - LLM provider configuration map
+    * `context` - Map with context for the investigation (e.g., `%{reason: "high memory"}`)
     * `opts` - Options
 
   ## Options
 
-    * `:context` - Map with context to pass to the LLM (e.g., trigger reason)
+    * `:context` - Map with context (alternative to second argument)
+    * `:client_registry` - LLM provider configuration map (default: `%{}`)
     * `:max_iterations` - Maximum LLM iterations before returning (default: 10)
     * `:timeout` - Timeout for awaiting completion (default: `:infinity`)
 
@@ -175,37 +179,37 @@ defmodule Beamlens.Operator do
 
   ## Examples
 
-      # Basic run
-      {:ok, notifications} = Beamlens.Operator.run(:beam, client_registry())
+      # Context as second argument
+      {:ok, notifications} = Beamlens.Operator.run(:beam, %{reason: "high memory"})
 
-      # With context
-      {:ok, notifications} = Beamlens.Operator.run(:beam, client_registry(),
-        context: %{reason: "high memory detected"}
+      # Context in opts
+      {:ok, notifications} = Beamlens.Operator.run(:beam, context: %{reason: "high memory"})
+
+      # With custom LLM provider
+      {:ok, notifications} = Beamlens.Operator.run(:beam, %{reason: "investigating"},
+        client_registry: %{primary: "Ollama", clients: [...]}
       )
 
-  ## Oban Integration
-
-      defmodule MyApp.BeamlensWorker do
-        use Oban.Worker, queue: :monitoring
-
-        @impl true
-        def perform(%{args: %{"skill" => skill_name, "reason" => reason}}) do
-          skill = String.to_existing_atom(skill_name)
-          {:ok, _notifications} = Beamlens.Operator.run(skill, client_registry(),
-            context: %{reason: reason}
-          )
-          :ok
-        end
-      end
-
   """
-  def run(skill, client_registry, opts \\ []) do
+  def run(skill, opts) when is_list(opts) do
+    {context, opts} = Keyword.pop(opts, :context, %{})
+    run(skill, context, opts)
+  end
+
+  def run(skill, context) when is_map(context) do
+    run(skill, context, [])
+  end
+
+  def run(skill, context, opts) when is_map(context) and is_list(opts) do
+    {client_registry, opts} = Keyword.pop(opts, :client_registry, %{})
+
     with {:ok, {_name, skill_module}} <- resolve_skill(skill) do
       opts =
         opts
         |> Keyword.put(:skill, skill_module)
         |> Keyword.put(:client_registry, client_registry)
         |> Keyword.put(:mode, :on_demand)
+        |> Keyword.put(:context, context)
 
       timeout = Keyword.get(opts, :timeout, :infinity)
 

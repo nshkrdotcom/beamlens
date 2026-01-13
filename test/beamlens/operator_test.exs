@@ -504,7 +504,7 @@ defmodule Beamlens.OperatorTest do
     end
   end
 
-  describe "run/3 skill resolution" do
+  describe "run/2 skill resolution" do
     test "returns error for invalid skill module" do
       assert {:error, {:invalid_skill_module, :nonexistent}} =
                Operator.run(:nonexistent, %{})
