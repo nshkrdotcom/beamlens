@@ -1,4 +1,4 @@
-# BeamLens
+# beamlens
 
 Autonomous supervision for the BEAM.
 
@@ -10,7 +10,7 @@ To find the root cause, you might SSH in and attach an `iex` shell. By the time 
 
 ## The Solution
 
-BeamLens is an Elixir library that runs inside your BEAM application. You add its `Operator` to your own supervision tree, giving it the same access to the runtime that you would have. It observes your system from the inside, with full context of its live state.
+beamlens is an Elixir library that runs inside your BEAM application. You add its `Operator` to your own supervision tree, giving it the same access to the runtime that you would have. It observes your system from the inside, with full context of its live state.
 
 ## How It Works
 
@@ -27,7 +27,7 @@ The system is built on standard OTP principles.
 
 - **Execution**: Tool execution is sandboxed in a Lua environment by default, preventing unintended side effects.
 
-- **Data Privacy**: You choose your own LLM provider. Telemetry data is processed within your infrastructure and is never sent to BeamLens.
+- **Data Privacy**: You choose your own LLM provider. Telemetry data is processed within your infrastructure and is never sent to beamlens.
 
 ## Execution Modes
 
@@ -245,7 +245,7 @@ Subscribe to notifications:
 ```elixir
 :telemetry.attach("my-notifications", [:beamlens, :operator, :notification_sent], fn
   _event, _measurements, %{notification: notification}, _config ->
-    Logger.warning("BeamLens: #{notification.summary}")
+    Logger.warning("beamlens: #{notification.summary}")
 end, nil)
 ```
 

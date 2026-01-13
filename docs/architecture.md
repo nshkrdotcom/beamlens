@@ -1,10 +1,10 @@
 # Architecture
 
-BeamLens uses an **autonomous operator** architecture where specialized operators run LLM-driven loops to monitor skills and detect anomalies. Operators support two modes: **continuous** for always-on monitoring and **on-demand** for triggered analysis. Notifications are emitted via telemetry.
+beamlens uses an **autonomous operator** architecture where specialized operators run LLM-driven loops to monitor skills and detect anomalies. Operators support two modes: **continuous** for always-on monitoring and **on-demand** for triggered analysis. Notifications are emitted via telemetry.
 
 ## Supervision Tree
 
-Add BeamLens to your application's supervision tree:
+Add beamlens to your application's supervision tree:
 
 ```elixir
 {Beamlens, operators: [:beam]}
@@ -215,7 +215,7 @@ See `Beamlens.Telemetry` for the complete event list.
 
 ## LLM Integration
 
-BeamLens uses [BAML](https://docs.boundaryml.com) for type-safe LLM prompts via [Puck](https://github.com/bradleygolden/puck). Four BAML functions handle the agent loops:
+beamlens uses [BAML](https://docs.boundaryml.com) for type-safe LLM prompts via [Puck](https://github.com/bradleygolden/puck). Four BAML functions handle the agent loops:
 
 - **OperatorLoop**: Continuous monitoring loop (uses `wait()` for pacing)
 - **OperatorRun**: On-demand analysis loop (uses `done()` to signal completion)
