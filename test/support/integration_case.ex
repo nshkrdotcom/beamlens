@@ -11,6 +11,19 @@ defmodule Beamlens.IntegrationCase do
   end
 
   @doc """
+  Builds a client registry for tests.
+
+  Returns `{:ok, registry}` or `{:error, reason}`.
+
+  Provider can be "anthropic", "openai", or "ollama".
+  Defaults to BEAMLENS_TEST_PROVIDER env var or "anthropic".
+  """
+  def build_client_registry(provider \\ nil) do
+    provider = provider || System.get_env("BEAMLENS_TEST_PROVIDER", "anthropic")
+    do_build_client_registry(provider)
+  end
+
+  @doc """
   Starts an operator under the test supervisor.
 
   Uses `start_supervised/2` so the operator is automatically cleaned up
@@ -28,9 +41,14 @@ defmodule Beamlens.IntegrationCase do
   end
 
   setup do
-    provider = System.get_env("BEAMLENS_TEST_PROVIDER", "anthropic")
+    # Configure operators for coordinator tests (set in persistent_term like Beamlens.Supervisor does)
+    :persistent_term.put({Beamlens.Supervisor, :operators}, [:beam, :ets, :gc])
 
-    case build_client_registry(provider) do
+    on_exit(fn ->
+      :persistent_term.erase({Beamlens.Supervisor, :operators})
+    end)
+
+    case build_client_registry() do
       {:ok, registry} ->
         {:ok, client_registry: registry}
 
@@ -39,7 +57,7 @@ defmodule Beamlens.IntegrationCase do
     end
   end
 
-  defp build_client_registry("anthropic") do
+  defp do_build_client_registry("anthropic") do
     case System.get_env("ANTHROPIC_API_KEY") do
       nil ->
         {:error, "ANTHROPIC_API_KEY not set. Set it or use BEAMLENS_TEST_PROVIDER=ollama"}
@@ -61,7 +79,7 @@ defmodule Beamlens.IntegrationCase do
     end
   end
 
-  defp build_client_registry("openai") do
+  defp do_build_client_registry("openai") do
     case System.get_env("OPENAI_API_KEY") do
       nil ->
         {:error, "OPENAI_API_KEY not set"}
@@ -83,7 +101,7 @@ defmodule Beamlens.IntegrationCase do
     end
   end
 
-  defp build_client_registry("ollama") do
+  defp do_build_client_registry("ollama") do
     case check_ollama_available() do
       :ok ->
         model = System.get_env("BEAMLENS_TEST_MODEL", "qwen3:4b")
@@ -105,7 +123,7 @@ defmodule Beamlens.IntegrationCase do
     end
   end
 
-  defp build_client_registry(provider) do
+  defp do_build_client_registry(provider) do
     {:error, "Unknown provider: #{provider}. Use anthropic, openai, or ollama"}
   end
 

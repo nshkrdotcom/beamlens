@@ -150,4 +150,14 @@ defmodule Beamlens.Operator.ToolsTest do
       assert {:error, _} = Zoi.parse(schema, input)
     end
   end
+
+  describe "schema(:on_demand)" do
+    test "parses done tool" do
+      schema = Tools.schema(:on_demand)
+      input = %{intent: "done"}
+
+      assert {:ok, result} = Zoi.parse(schema, input)
+      assert %Tools.Done{} = result
+    end
+  end
 end

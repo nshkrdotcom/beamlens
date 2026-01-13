@@ -12,6 +12,7 @@ defmodule Beamlens.CoordinatorTest do
   end
 
   defp start_coordinator(opts \\ []) do
+    Process.flag(:trap_exit, true)
     name = Keyword.get(opts, :name, :"coordinator_#{:erlang.unique_integer([:positive])}")
     opts = Keyword.put(opts, :name, name)
     {:ok, pid} = Coordinator.start_link(opts)
@@ -24,9 +25,17 @@ defmodule Beamlens.CoordinatorTest do
   end
 
   defp stop_coordinator(pid) do
-    if Process.alive?(pid) do
-      GenServer.stop(pid, :normal)
-    end
+    if Process.alive?(pid), do: do_stop_coordinator(pid)
+  end
+
+  defp do_stop_coordinator(pid) do
+    :sys.replace_state(pid, fn state ->
+      %{state | pending_task: nil}
+    end)
+
+    GenServer.stop(pid, :normal)
+  catch
+    :exit, _ -> :ok
   end
 
   defp build_test_notification(overrides \\ %{}) do
@@ -44,8 +53,30 @@ defmodule Beamlens.CoordinatorTest do
     )
   end
 
-  defp simulate_notification(pid, notification) do
-    GenServer.cast(pid, {:notification_received, notification})
+  defp simulate_notification(coordinator_pid, notification) do
+    # Simulate an operator sending a notification by:
+    # 1. Adding a fake operator entry to running_operators
+    # 2. Sending the notification as if from that operator
+    fake_operator_pid = self()
+
+    :sys.replace_state(coordinator_pid, fn state ->
+      %{
+        state
+        | running_operators:
+            Map.put(state.running_operators, fake_operator_pid, %{
+              skill: :test,
+              ref: make_ref(),
+              started_at: DateTime.utc_now()
+            })
+      }
+    end)
+
+    send(coordinator_pid, {:operator_notification, fake_operator_pid, notification})
+  end
+
+  defp simulate_pubsub_notification(coordinator_pid, notification) do
+    # Simulate a notification arriving via PubSub (continuous mode)
+    send(coordinator_pid, {:beamlens_notification, notification, node()})
   end
 
   defp extract_content_text(content) when is_binary(content), do: content
@@ -209,7 +240,7 @@ defmodule Beamlens.CoordinatorTest do
       stop_coordinator(pid)
     end
 
-    test "first notification triggers loop start via telemetry" do
+    test "first notification triggers loop start via pubsub" do
       ref = make_ref()
       parent = self()
 
@@ -225,7 +256,7 @@ defmodule Beamlens.CoordinatorTest do
       {:ok, pid} = start_coordinator()
 
       notification = build_test_notification()
-      simulate_notification(pid, notification)
+      simulate_pubsub_notification(pid, notification)
 
       assert_receive {:telemetry, :iteration_start, %{iteration: 0}}, 1000
 
@@ -603,15 +634,15 @@ defmodule Beamlens.CoordinatorTest do
       :telemetry.detach({ref, :started})
     end
 
-    test "emits notification_received event" do
+    test "emits operator_notification_received event" do
       ref = make_ref()
       parent = self()
 
       :telemetry.attach(
-        {ref, :notification_received},
-        [:beamlens, :coordinator, :notification_received],
+        {ref, :operator_notification_received},
+        [:beamlens, :coordinator, :operator_notification_received],
         fn _event, _measurements, metadata, _ ->
-          send(parent, {:telemetry, :notification_received, metadata})
+          send(parent, {:telemetry, :operator_notification_received, metadata})
         end,
         nil
       )
@@ -625,11 +656,12 @@ defmodule Beamlens.CoordinatorTest do
       notification = build_test_notification()
       simulate_notification(pid, notification)
 
-      assert_receive {:telemetry, :notification_received, %{notification_id: _, operator: :test}},
+      assert_receive {:telemetry, :operator_notification_received,
+                      %{notification_id: _, operator_pid: _}},
                      1000
 
       stop_coordinator(pid)
-      :telemetry.detach({ref, :notification_received})
+      :telemetry.detach({ref, :operator_notification_received})
     end
 
     test "emits iteration_start event when loop runs" do
@@ -648,7 +680,7 @@ defmodule Beamlens.CoordinatorTest do
       {:ok, pid} = start_coordinator()
 
       notification = build_test_notification()
-      simulate_notification(pid, notification)
+      simulate_pubsub_notification(pid, notification)
 
       assert_receive {:telemetry, :iteration_start, %{iteration: 0, trace_id: _}}, 1000
 
@@ -853,12 +885,12 @@ defmodule Beamlens.CoordinatorTest do
       stop_coordinator(pid)
     end
 
-    test "ignores notifications from local node", %{pubsub: pubsub} do
+    test "accepts notifications from local node via pubsub", %{pubsub: pubsub} do
       name = :"coordinator_pubsub_local_#{:erlang.unique_integer([:positive])}"
       {:ok, pid} = Coordinator.start_link(name: name, pubsub: pubsub)
 
       :sys.replace_state(pid, fn state ->
-        %{state | client: mock_client()}
+        %{state | client: mock_client(), running: true}
       end)
 
       notification = build_test_notification()
@@ -870,22 +902,22 @@ defmodule Beamlens.CoordinatorTest do
       )
 
       state = :sys.get_state(pid)
-      refute Map.has_key?(state.notifications, notification.id)
+      assert Map.has_key?(state.notifications, notification.id)
 
       stop_coordinator(pid)
     end
 
-    test "emits remote_notification_received telemetry for cross-node notifications", %{
+    test "emits pubsub_notification_received telemetry for cross-node notifications", %{
       pubsub: pubsub
     } do
       ref = make_ref()
       parent = self()
 
       :telemetry.attach(
-        {ref, :remote_notification},
-        [:beamlens, :coordinator, :remote_notification_received],
+        {ref, :pubsub_notification},
+        [:beamlens, :coordinator, :pubsub_notification_received],
         fn _event, _measurements, metadata, _ ->
-          send(parent, {:telemetry, :remote_notification_received, metadata})
+          send(parent, {:telemetry, :pubsub_notification_received, metadata})
         end,
         nil
       )
@@ -905,12 +937,12 @@ defmodule Beamlens.CoordinatorTest do
         {:beamlens_notification, notification, :other@node}
       )
 
-      assert_receive {:telemetry, :remote_notification_received,
+      assert_receive {:telemetry, :pubsub_notification_received,
                       %{notification_id: _, operator: :test, source_node: :other@node}},
                      1000
 
       stop_coordinator(pid)
-      :telemetry.detach({ref, :remote_notification})
+      :telemetry.detach({ref, :pubsub_notification})
     end
 
     test "starts loop when receiving first remote notification", %{pubsub: pubsub} do
@@ -999,6 +1031,783 @@ defmodule Beamlens.CoordinatorTest do
       refute_receive {:telemetry, :takeover, _}, 100
 
       :telemetry.detach({ref, :takeover})
+    end
+  end
+
+  describe "handle_action - InvokeOperators" do
+    setup do
+      :persistent_term.put({Beamlens.Supervisor, :operators}, [:beam, :ets, :gc])
+
+      on_exit(fn ->
+        :persistent_term.erase({Beamlens.Supervisor, :operators})
+      end)
+    end
+
+    test "emits invoke_operators telemetry event" do
+      ref = make_ref()
+      parent = self()
+
+      :telemetry.attach(
+        {ref, :invoke_operators},
+        [:beamlens, :coordinator, :invoke_operators],
+        fn _event, _measurements, metadata, _ ->
+          send(parent, {:telemetry, :invoke_operators, metadata})
+        end,
+        nil
+      )
+
+      {:ok, pid} = start_coordinator(mode: :on_demand)
+
+      task = Task.async(fn -> :ok end)
+      Task.await(task)
+
+      :sys.replace_state(pid, fn state ->
+        %{state | running: true, pending_task: task, pending_trace_id: "test-trace"}
+      end)
+
+      action_map = %{intent: "invoke_operators", skills: ["beam"], context: "test analysis"}
+      send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
+
+      assert_receive {:telemetry, :invoke_operators, %{skills: ["beam"]}}, 1000
+
+      stop_coordinator(pid)
+      :telemetry.detach({ref, :invoke_operators})
+    end
+
+    test "adds result to context with started skills count" do
+      {:ok, pid} = start_coordinator(mode: :on_demand)
+
+      task = Task.async(fn -> :ok end)
+      Task.await(task)
+
+      :sys.replace_state(pid, fn state ->
+        %{state | running: true, pending_task: task, pending_trace_id: "test-trace"}
+      end)
+
+      action_map = %{intent: "invoke_operators", skills: ["beam"]}
+      send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
+
+      state = :sys.get_state(pid)
+      last_message = List.last(state.context.messages)
+      content_text = extract_content_text(last_message.content)
+
+      assert content_text =~ "started"
+      assert content_text =~ "count"
+
+      stop_coordinator(pid)
+    end
+
+    test "increments iteration after processing" do
+      {:ok, pid} = start_coordinator(mode: :on_demand)
+
+      task = Task.async(fn -> :ok end)
+      Task.await(task)
+
+      :sys.replace_state(pid, fn state ->
+        %{state | running: true, pending_task: task, pending_trace_id: "test-trace", iteration: 0}
+      end)
+
+      action_map = %{intent: "invoke_operators", skills: ["beam"]}
+      send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
+
+      state = :sys.get_state(pid)
+      assert state.iteration == 1
+
+      stop_coordinator(pid)
+    end
+
+    test "handles unknown skill gracefully" do
+      skill_atom =
+        try do
+          String.to_existing_atom("nonexistent_skill_xyz123")
+        rescue
+          ArgumentError -> nil
+        end
+
+      assert skill_atom == nil
+    end
+  end
+
+  describe "handle_action - MessageOperator" do
+    test "returns error when operator not running" do
+      {:ok, pid} = start_coordinator(mode: :on_demand)
+
+      task = Task.async(fn -> :ok end)
+      Task.await(task)
+
+      :sys.replace_state(pid, fn state ->
+        %{state | running: true, pending_task: task, pending_trace_id: "test-trace"}
+      end)
+
+      action_map = %{intent: "message_operator", skill: "beam", message: "test message"}
+      send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
+
+      state = :sys.get_state(pid)
+      last_message = List.last(state.context.messages)
+      content_text = extract_content_text(last_message.content)
+
+      assert content_text =~ "error"
+      assert content_text =~ "not running"
+
+      stop_coordinator(pid)
+    end
+
+    test "emits message_operator telemetry event" do
+      ref = make_ref()
+      parent = self()
+
+      :telemetry.attach(
+        {ref, :message_operator},
+        [:beamlens, :coordinator, :message_operator],
+        fn _event, _measurements, metadata, _ ->
+          send(parent, {:telemetry, :message_operator, metadata})
+        end,
+        nil
+      )
+
+      {:ok, pid} = start_coordinator(mode: :on_demand)
+
+      task = Task.async(fn -> :ok end)
+      Task.await(task)
+
+      :sys.replace_state(pid, fn state ->
+        %{state | running: true, pending_task: task, pending_trace_id: "test-trace"}
+      end)
+
+      action_map = %{intent: "message_operator", skill: "beam", message: "test message"}
+      send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
+
+      assert_receive {:telemetry, :message_operator, %{skill: "beam"}}, 1000
+
+      stop_coordinator(pid)
+      :telemetry.detach({ref, :message_operator})
+    end
+
+    test "increments iteration after processing" do
+      {:ok, pid} = start_coordinator(mode: :on_demand)
+
+      task = Task.async(fn -> :ok end)
+      Task.await(task)
+
+      :sys.replace_state(pid, fn state ->
+        %{state | running: true, pending_task: task, pending_trace_id: "test-trace", iteration: 0}
+      end)
+
+      action_map = %{intent: "message_operator", skill: "beam", message: "test message"}
+      send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
+
+      state = :sys.get_state(pid)
+      assert state.iteration == 1
+
+      stop_coordinator(pid)
+    end
+  end
+
+  describe "handle_action - GetOperatorStatuses" do
+    test "returns empty list when no operators running" do
+      {:ok, pid} = start_coordinator(mode: :on_demand)
+
+      task = Task.async(fn -> :ok end)
+      Task.await(task)
+
+      :sys.replace_state(pid, fn state ->
+        %{state | running: true, pending_task: task, pending_trace_id: "test-trace"}
+      end)
+
+      action_map = %{intent: "get_operator_statuses"}
+      send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
+
+      state = :sys.get_state(pid)
+      last_message = List.last(state.context.messages)
+      content_text = extract_content_text(last_message.content)
+
+      assert content_text =~ "[]"
+
+      stop_coordinator(pid)
+    end
+
+    test "handles dead operator PIDs gracefully" do
+      {:ok, pid} = start_coordinator(mode: :on_demand)
+
+      dead_pid = spawn(fn -> :ok end)
+
+      :sys.replace_state(pid, fn state ->
+        running_operators =
+          Map.put(state.running_operators, dead_pid, %{
+            skill: :beam,
+            ref: make_ref(),
+            started_at: DateTime.utc_now()
+          })
+
+        %{state | running_operators: running_operators}
+      end)
+
+      task = Task.async(fn -> :ok end)
+      Task.await(task)
+
+      :sys.replace_state(pid, fn state ->
+        %{state | running: true, pending_task: task, pending_trace_id: "test-trace"}
+      end)
+
+      action_map = %{intent: "get_operator_statuses"}
+      send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
+
+      state = :sys.get_state(pid)
+      last_message = List.last(state.context.messages)
+      content_text = extract_content_text(last_message.content)
+
+      assert content_text =~ "alive"
+      assert content_text =~ "false"
+
+      stop_coordinator(pid)
+    end
+
+    test "emits get_operator_statuses telemetry event" do
+      ref = make_ref()
+      parent = self()
+
+      :telemetry.attach(
+        {ref, :get_operator_statuses},
+        [:beamlens, :coordinator, :get_operator_statuses],
+        fn _event, _measurements, metadata, _ ->
+          send(parent, {:telemetry, :get_operator_statuses, metadata})
+        end,
+        nil
+      )
+
+      {:ok, pid} = start_coordinator(mode: :on_demand)
+
+      task = Task.async(fn -> :ok end)
+      Task.await(task)
+
+      :sys.replace_state(pid, fn state ->
+        %{state | running: true, pending_task: task, pending_trace_id: "test-trace"}
+      end)
+
+      action_map = %{intent: "get_operator_statuses"}
+      send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
+
+      assert_receive {:telemetry, :get_operator_statuses, %{trace_id: "test-trace"}}, 1000
+
+      stop_coordinator(pid)
+      :telemetry.detach({ref, :get_operator_statuses})
+    end
+
+    test "increments iteration after processing" do
+      {:ok, pid} = start_coordinator(mode: :on_demand)
+
+      task = Task.async(fn -> :ok end)
+      Task.await(task)
+
+      :sys.replace_state(pid, fn state ->
+        %{state | running: true, pending_task: task, pending_trace_id: "test-trace", iteration: 0}
+      end)
+
+      action_map = %{intent: "get_operator_statuses"}
+      send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
+
+      state = :sys.get_state(pid)
+      assert state.iteration == 1
+
+      stop_coordinator(pid)
+    end
+  end
+
+  describe "handle_action - Wait" do
+    test "schedules continue_after_wait message" do
+      {:ok, pid} = start_coordinator(mode: :on_demand)
+
+      task = Task.async(fn -> :ok end)
+      Task.await(task)
+
+      :sys.replace_state(pid, fn state ->
+        %{state | running: true, pending_task: task, pending_trace_id: "test-trace"}
+      end)
+
+      action_map = %{intent: "wait", ms: 50}
+      send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
+
+      state = :sys.get_state(pid)
+      last_message = List.last(state.context.messages)
+      content_text = extract_content_text(last_message.content)
+
+      assert content_text =~ "waited"
+      assert content_text =~ "50"
+
+      stop_coordinator(pid)
+    end
+
+    test "emits wait telemetry event" do
+      ref = make_ref()
+      parent = self()
+
+      :telemetry.attach(
+        {ref, :wait},
+        [:beamlens, :coordinator, :wait],
+        fn _event, _measurements, metadata, _ ->
+          send(parent, {:telemetry, :wait, metadata})
+        end,
+        nil
+      )
+
+      {:ok, pid} = start_coordinator(mode: :on_demand)
+
+      task = Task.async(fn -> :ok end)
+      Task.await(task)
+
+      :sys.replace_state(pid, fn state ->
+        %{state | running: true, pending_task: task, pending_trace_id: "test-trace"}
+      end)
+
+      action_map = %{intent: "wait", ms: 100}
+      send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
+
+      assert_receive {:telemetry, :wait, %{ms: 100}}, 1000
+
+      stop_coordinator(pid)
+      :telemetry.detach({ref, :wait})
+    end
+
+    test "increments iteration after processing" do
+      {:ok, pid} = start_coordinator(mode: :on_demand)
+
+      task = Task.async(fn -> :ok end)
+      Task.await(task)
+
+      :sys.replace_state(pid, fn state ->
+        %{state | running: true, pending_task: task, pending_trace_id: "test-trace", iteration: 0}
+      end)
+
+      action_map = %{intent: "wait", ms: 10}
+      send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
+
+      state = :sys.get_state(pid)
+      assert state.iteration == 1
+
+      stop_coordinator(pid)
+    end
+  end
+
+  describe "operator crash handling" do
+    test "coordinator handles DOWN and removes operator from running_operators" do
+      {:ok, pid} = start_coordinator(mode: :on_demand)
+
+      operator_pid = spawn(fn -> :ok end)
+      operator_ref = make_ref()
+
+      :sys.replace_state(pid, fn state ->
+        running_operators =
+          Map.put(state.running_operators, operator_pid, %{
+            skill: :beam,
+            ref: operator_ref,
+            started_at: DateTime.utc_now()
+          })
+
+        %{state | running_operators: running_operators}
+      end)
+
+      send(pid, {:DOWN, operator_ref, :process, operator_pid, :killed})
+
+      state = :sys.get_state(pid)
+      assert map_size(state.running_operators) == 0
+
+      stop_coordinator(pid)
+    end
+
+    test "coordinator handles EXIT and removes operator from running_operators" do
+      {:ok, pid} = start_coordinator(mode: :on_demand)
+
+      operator_pid = spawn(fn -> :ok end)
+      operator_ref = make_ref()
+
+      :sys.replace_state(pid, fn state ->
+        running_operators =
+          Map.put(state.running_operators, operator_pid, %{
+            skill: :beam,
+            ref: operator_ref,
+            started_at: DateTime.utc_now()
+          })
+
+        %{state | running_operators: running_operators}
+      end)
+
+      send(pid, {:EXIT, operator_pid, :killed})
+
+      state = :sys.get_state(pid)
+      assert map_size(state.running_operators) == 0
+
+      stop_coordinator(pid)
+    end
+
+    test "coordinator emits operator_crashed telemetry on DOWN" do
+      ref = make_ref()
+      parent = self()
+
+      :telemetry.attach(
+        {ref, :operator_crashed},
+        [:beamlens, :coordinator, :operator_crashed],
+        fn _event, _measurements, metadata, _ ->
+          send(parent, {:telemetry, :operator_crashed, metadata})
+        end,
+        nil
+      )
+
+      {:ok, pid} = start_coordinator(mode: :on_demand)
+
+      operator_pid = spawn(fn -> :ok end)
+      operator_ref = make_ref()
+
+      :sys.replace_state(pid, fn state ->
+        running_operators =
+          Map.put(state.running_operators, operator_pid, %{
+            skill: :beam,
+            ref: operator_ref,
+            started_at: DateTime.utc_now()
+          })
+
+        %{state | running_operators: running_operators}
+      end)
+
+      send(pid, {:DOWN, operator_ref, :process, operator_pid, :killed})
+
+      assert_receive {:telemetry, :operator_crashed, %{skill: :beam, reason: :killed}}, 1000
+
+      stop_coordinator(pid)
+      :telemetry.detach({ref, :operator_crashed})
+    end
+
+    test "coordinator emits operator_crashed telemetry on EXIT" do
+      ref = make_ref()
+      parent = self()
+
+      :telemetry.attach(
+        {ref, :operator_crashed},
+        [:beamlens, :coordinator, :operator_crashed],
+        fn _event, _measurements, metadata, _ ->
+          send(parent, {:telemetry, :operator_crashed, metadata})
+        end,
+        nil
+      )
+
+      {:ok, pid} = start_coordinator(mode: :on_demand)
+
+      operator_pid = spawn(fn -> :ok end)
+      operator_ref = make_ref()
+
+      :sys.replace_state(pid, fn state ->
+        running_operators =
+          Map.put(state.running_operators, operator_pid, %{
+            skill: :beam,
+            ref: operator_ref,
+            started_at: DateTime.utc_now()
+          })
+
+        %{state | running_operators: running_operators}
+      end)
+
+      send(pid, {:EXIT, operator_pid, :boom})
+
+      assert_receive {:telemetry, :operator_crashed, %{skill: :beam, reason: :boom}}, 1000
+
+      stop_coordinator(pid)
+      :telemetry.detach({ref, :operator_crashed})
+    end
+
+    test "coordinator continues running after operator crash" do
+      {:ok, pid} = start_coordinator(mode: :on_demand)
+
+      operator_pid = spawn(fn -> :ok end)
+      operator_ref = make_ref()
+
+      :sys.replace_state(pid, fn state ->
+        running_operators =
+          Map.put(state.running_operators, operator_pid, %{
+            skill: :beam,
+            ref: operator_ref,
+            started_at: DateTime.utc_now()
+          })
+
+        %{state | running_operators: running_operators, running: true}
+      end)
+
+      send(pid, {:DOWN, operator_ref, :process, operator_pid, :killed})
+
+      assert Process.alive?(pid)
+
+      state = :sys.get_state(pid)
+      assert state.running == true
+
+      stop_coordinator(pid)
+    end
+
+    test "multiple operator crashes handled independently" do
+      {:ok, pid} = start_coordinator(mode: :on_demand)
+
+      operator_pid1 = spawn(fn -> :ok end)
+      operator_ref1 = make_ref()
+      operator_pid2 = spawn(fn -> :ok end)
+      operator_ref2 = make_ref()
+
+      :sys.replace_state(pid, fn state ->
+        running_operators =
+          state.running_operators
+          |> Map.put(operator_pid1, %{
+            skill: :beam,
+            ref: operator_ref1,
+            started_at: DateTime.utc_now()
+          })
+          |> Map.put(operator_pid2, %{
+            skill: :ets,
+            ref: operator_ref2,
+            started_at: DateTime.utc_now()
+          })
+
+        %{state | running_operators: running_operators}
+      end)
+
+      send(pid, {:DOWN, operator_ref1, :process, operator_pid1, :killed})
+
+      state = :sys.get_state(pid)
+      assert map_size(state.running_operators) == 1
+      assert Map.has_key?(state.running_operators, operator_pid2)
+
+      send(pid, {:EXIT, operator_pid2, :boom})
+
+      state = :sys.get_state(pid)
+      assert map_size(state.running_operators) == 0
+
+      stop_coordinator(pid)
+    end
+
+    test "ignores DOWN from unknown refs" do
+      {:ok, pid} = start_coordinator(mode: :on_demand)
+
+      unknown_pid = spawn(fn -> :ok end)
+      unknown_ref = make_ref()
+
+      state_before = :sys.get_state(pid)
+
+      send(pid, {:DOWN, unknown_ref, :process, unknown_pid, :killed})
+
+      state_after = :sys.get_state(pid)
+      assert state_before.running_operators == state_after.running_operators
+
+      stop_coordinator(pid)
+    end
+
+    test "ignores EXIT from unknown pids" do
+      {:ok, pid} = start_coordinator(mode: :on_demand)
+
+      unknown_pid = spawn(fn -> :ok end)
+
+      state_before = :sys.get_state(pid)
+
+      send(pid, {:EXIT, unknown_pid, :killed})
+
+      state_after = :sys.get_state(pid)
+      assert state_before.running_operators == state_after.running_operators
+
+      stop_coordinator(pid)
+    end
+  end
+
+  describe "coordinator crash cascades to operators" do
+    test "linked operators die when coordinator dies" do
+      Process.flag(:trap_exit, true)
+
+      {:ok, coordinator_pid} = start_coordinator(mode: :on_demand)
+
+      operator_pid =
+        spawn(fn ->
+          receive do
+            :stop -> :ok
+          end
+        end)
+
+      :sys.replace_state(coordinator_pid, fn state ->
+        Process.link(operator_pid)
+
+        running_operators =
+          Map.put(state.running_operators, operator_pid, %{
+            skill: :beam,
+            ref: Process.monitor(operator_pid),
+            started_at: DateTime.utc_now()
+          })
+
+        %{state | running_operators: running_operators}
+      end)
+
+      Process.unlink(coordinator_pid)
+      Process.exit(coordinator_pid, :kill)
+
+      ref = Process.monitor(operator_pid)
+      assert_receive {:DOWN, ^ref, :process, ^operator_pid, :killed}, 1000
+    end
+  end
+
+  describe "operator notification flow" do
+    test "ignores notifications from unknown operator PIDs" do
+      {:ok, pid} = start_coordinator()
+
+      unknown_pid = spawn(fn -> :ok end)
+      notification = build_test_notification()
+
+      state_before = :sys.get_state(pid)
+
+      send(pid, {:operator_notification, unknown_pid, notification})
+
+      state_after = :sys.get_state(pid)
+      assert map_size(state_after.notifications) == map_size(state_before.notifications)
+
+      stop_coordinator(pid)
+    end
+  end
+
+  describe "operator completion flow" do
+    test "operator_complete message merges notifications" do
+      {:ok, pid} = start_coordinator(mode: :on_demand)
+
+      operator_pid = spawn(fn -> :ok end)
+      operator_ref = make_ref()
+
+      :sys.replace_state(pid, fn state ->
+        running_operators =
+          Map.put(state.running_operators, operator_pid, %{
+            skill: :beam,
+            ref: operator_ref,
+            started_at: DateTime.utc_now()
+          })
+
+        %{state | running_operators: running_operators}
+      end)
+
+      notification = build_test_notification()
+
+      result = %{
+        summary: "Test result",
+        notifications: [notification]
+      }
+
+      send(pid, {:operator_complete, operator_pid, :beam, result})
+
+      state = :sys.get_state(pid)
+      assert Map.has_key?(state.notifications, notification.id)
+      assert state.notifications[notification.id].status == :unread
+
+      stop_coordinator(pid)
+    end
+
+    test "operator_complete adds result to operator_results" do
+      {:ok, pid} = start_coordinator(mode: :on_demand)
+
+      operator_pid = spawn(fn -> :ok end)
+      operator_ref = make_ref()
+
+      :sys.replace_state(pid, fn state ->
+        running_operators =
+          Map.put(state.running_operators, operator_pid, %{
+            skill: :beam,
+            ref: operator_ref,
+            started_at: DateTime.utc_now()
+          })
+
+        %{state | running_operators: running_operators}
+      end)
+
+      result = %{summary: "Test result", notifications: []}
+
+      send(pid, {:operator_complete, operator_pid, :beam, result})
+
+      state = :sys.get_state(pid)
+      assert length(state.operator_results) == 1
+
+      [operator_result] = state.operator_results
+      assert operator_result.skill == :beam
+      assert operator_result.summary == "Test result"
+
+      stop_coordinator(pid)
+    end
+
+    test "operator removed from running_operators on completion" do
+      {:ok, pid} = start_coordinator(mode: :on_demand)
+
+      operator_pid = spawn(fn -> :ok end)
+      operator_ref = make_ref()
+
+      :sys.replace_state(pid, fn state ->
+        running_operators =
+          Map.put(state.running_operators, operator_pid, %{
+            skill: :beam,
+            ref: operator_ref,
+            started_at: DateTime.utc_now()
+          })
+
+        %{state | running_operators: running_operators}
+      end)
+
+      result = %{summary: "Test result", notifications: []}
+
+      send(pid, {:operator_complete, operator_pid, :beam, result})
+
+      state = :sys.get_state(pid)
+      assert map_size(state.running_operators) == 0
+
+      stop_coordinator(pid)
+    end
+
+    test "emits operator_complete telemetry" do
+      ref = make_ref()
+      parent = self()
+
+      :telemetry.attach(
+        {ref, :operator_complete},
+        [:beamlens, :coordinator, :operator_complete],
+        fn _event, _measurements, metadata, _ ->
+          send(parent, {:telemetry, :operator_complete, metadata})
+        end,
+        nil
+      )
+
+      {:ok, pid} = start_coordinator(mode: :on_demand)
+
+      operator_pid = spawn(fn -> :ok end)
+      operator_ref = make_ref()
+
+      :sys.replace_state(pid, fn state ->
+        running_operators =
+          Map.put(state.running_operators, operator_pid, %{
+            skill: :beam,
+            ref: operator_ref,
+            started_at: DateTime.utc_now()
+          })
+
+        %{state | running_operators: running_operators}
+      end)
+
+      result = %{summary: "Test result", notifications: []}
+
+      send(pid, {:operator_complete, operator_pid, :beam, result})
+
+      assert_receive {:telemetry, :operator_complete, %{skill: :beam, result: ^result}}, 1000
+
+      stop_coordinator(pid)
+      :telemetry.detach({ref, :operator_complete})
+    end
+
+    test "ignores completion from unknown operator PIDs" do
+      {:ok, pid} = start_coordinator(mode: :on_demand)
+
+      unknown_pid = spawn(fn -> :ok end)
+      result = %{summary: "Test result", notifications: []}
+
+      state_before = :sys.get_state(pid)
+
+      send(pid, {:operator_complete, unknown_pid, :beam, result})
+
+      state_after = :sys.get_state(pid)
+      assert state_before.operator_results == state_after.operator_results
+
+      stop_coordinator(pid)
     end
   end
 end

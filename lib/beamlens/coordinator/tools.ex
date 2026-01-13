@@ -8,6 +8,10 @@ defmodule Beamlens.Coordinator.Tools do
   - ProduceInsight: Emit insight + auto-resolve referenced notifications
   - Done: End loop, wait for next notification
   - Think: Reason through complex decisions before acting
+  - InvokeOperators: Spawn multiple operators in parallel (on-demand only)
+  - MessageOperator: Send message to running operator, get LLM response (on-demand only)
+  - GetOperatorStatuses: Check status of running operators (on-demand only)
+  - Wait: Pause loop for specified duration (on-demand only)
   """
 
   defmodule GetNotifications do
@@ -70,18 +74,78 @@ defmodule Beamlens.Coordinator.Tools do
           }
   end
 
+  defmodule InvokeOperators do
+    @moduledoc false
+    defstruct [:intent, :skills, :context]
+
+    @type t :: %__MODULE__{
+            intent: String.t(),
+            skills: [String.t()],
+            context: String.t() | nil
+          }
+  end
+
+  defmodule MessageOperator do
+    @moduledoc false
+    defstruct [:intent, :skill, :message]
+
+    @type t :: %__MODULE__{
+            intent: String.t(),
+            skill: String.t(),
+            message: String.t()
+          }
+  end
+
+  defmodule GetOperatorStatuses do
+    @moduledoc false
+    defstruct [:intent]
+
+    @type t :: %__MODULE__{intent: String.t()}
+  end
+
+  defmodule Wait do
+    @moduledoc false
+    defstruct [:intent, :ms]
+
+    @type t :: %__MODULE__{
+            intent: String.t(),
+            ms: pos_integer()
+          }
+  end
+
   @doc """
   Returns a Zoi union schema for parsing coordinator tool responses.
 
   Uses discriminated union pattern matching on the `intent` field.
+
+  ## Modes
+
+  - `:continuous` (default) - Standard tools for event-driven loop
+  - `:on_demand` - Includes `invoke_operator` for spawning operators
   """
-  def schema do
+  def schema(mode \\ :continuous)
+
+  def schema(:continuous) do
     Zoi.union([
       get_notifications_schema(),
       update_notification_statuses_schema(),
       produce_insight_schema(),
       done_schema(),
       think_schema()
+    ])
+  end
+
+  def schema(:on_demand) do
+    Zoi.union([
+      get_notifications_schema(),
+      update_notification_statuses_schema(),
+      produce_insight_schema(),
+      done_schema(),
+      think_schema(),
+      invoke_operators_schema(),
+      message_operator_schema(),
+      get_operator_statuses_schema(),
+      wait_schema()
     ])
   end
 
@@ -136,6 +200,37 @@ defmodule Beamlens.Coordinator.Tools do
       thought: Zoi.string()
     })
     |> Zoi.transform(fn data -> {:ok, struct!(Think, data)} end)
+  end
+
+  defp invoke_operators_schema do
+    Zoi.object(%{
+      intent: Zoi.literal("invoke_operators"),
+      skills: Zoi.list(Zoi.string()),
+      context: Zoi.nullish(Zoi.string())
+    })
+    |> Zoi.transform(fn data -> {:ok, struct!(InvokeOperators, data)} end)
+  end
+
+  defp message_operator_schema do
+    Zoi.object(%{
+      intent: Zoi.literal("message_operator"),
+      skill: Zoi.string(),
+      message: Zoi.string()
+    })
+    |> Zoi.transform(fn data -> {:ok, struct!(MessageOperator, data)} end)
+  end
+
+  defp get_operator_statuses_schema do
+    Zoi.object(%{intent: Zoi.literal("get_operator_statuses")})
+    |> Zoi.transform(fn data -> {:ok, struct!(GetOperatorStatuses, data)} end)
+  end
+
+  defp wait_schema do
+    Zoi.object(%{
+      intent: Zoi.literal("wait"),
+      ms: Zoi.integer()
+    })
+    |> Zoi.transform(fn data -> {:ok, struct!(Wait, data)} end)
   end
 
   defp atomize_status("unread"), do: {:ok, :unread}

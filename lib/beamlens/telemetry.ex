@@ -102,6 +102,10 @@ defmodule Beamlens.Telemetry do
     - Measurements: `%{system_time: integer}`
     - Metadata: `%{operator: atom(), trace_id: String.t(), thought: String.t()}`
 
+  * `[:beamlens, :operator, :done]` - Operator on-demand analysis completed
+    - Measurements: `%{system_time: integer}`
+    - Metadata: `%{operator: atom(), trace_id: String.t()}`
+
   * `[:beamlens, :operator, :llm_error]` - Operator LLM call failed
     - Measurements: `%{system_time: integer}`
     - Metadata: `%{operator: atom(), trace_id: String.t(), reason: term(),
@@ -124,10 +128,6 @@ defmodule Beamlens.Telemetry do
   * `[:beamlens, :coordinator, :started]` - Coordinator server started
     - Measurements: `%{system_time: integer}`
     - Metadata: `%{running: boolean, notification_count: integer}`
-
-  * `[:beamlens, :coordinator, :notification_received]` - Notification queued for correlation
-    - Measurements: `%{system_time: integer}`
-    - Metadata: `%{notification_id: String.t(), operator: atom()}`
 
   * `[:beamlens, :coordinator, :iteration_start]` - Coordinator analysis iteration starting
     - Measurements: `%{system_time: integer}`
@@ -168,6 +168,46 @@ defmodule Beamlens.Telemetry do
   * `[:beamlens, :coordinator, :takeover]` - Coordinator shutdown for Highlander takeover
     - Measurements: `%{system_time: integer}`
     - Metadata: `%{notification_count: integer}`
+
+  * `[:beamlens, :coordinator, :invoke_operators]` - Coordinator invoked operators (on-demand mode)
+    - Measurements: `%{system_time: integer}`
+    - Metadata: `%{trace_id: String.t(), skills: list(atom())}`
+
+  * `[:beamlens, :coordinator, :message_operator]` - Coordinator messaged a running operator
+    - Measurements: `%{system_time: integer}`
+    - Metadata: `%{trace_id: String.t(), skill: atom()}`
+
+  * `[:beamlens, :coordinator, :get_operator_statuses]` - Coordinator retrieved operator statuses
+    - Measurements: `%{system_time: integer}`
+    - Metadata: `%{trace_id: String.t()}`
+
+  * `[:beamlens, :coordinator, :wait]` - Coordinator sleeping
+    - Measurements: `%{system_time: integer}`
+    - Metadata: `%{trace_id: String.t(), ms: integer}`
+
+  * `[:beamlens, :coordinator, :think]` - Coordinator recorded a thought
+    - Measurements: `%{system_time: integer}`
+    - Metadata: `%{trace_id: String.t()}`
+
+  * `[:beamlens, :coordinator, :pubsub_notification_received]` - Notification received from PubSub (clustered mode)
+    - Measurements: `%{system_time: integer}`
+    - Metadata: `%{notification_id: String.t(), operator: atom()}`
+
+  * `[:beamlens, :coordinator, :operator_notification_received]` - Notification received from running operator
+    - Measurements: `%{system_time: integer}`
+    - Metadata: `%{notification_id: String.t(), operator_pid: pid()}`
+
+  * `[:beamlens, :coordinator, :operator_complete]` - On-demand operator completed
+    - Measurements: `%{system_time: integer}`
+    - Metadata: `%{skill: atom(), result: map()}`
+
+  * `[:beamlens, :coordinator, :operator_crashed]` - On-demand operator crashed
+    - Measurements: `%{system_time: integer}`
+    - Metadata: `%{skill: atom(), reason: term()}`
+
+  * `[:beamlens, :coordinator, :max_iterations_reached]` - Coordinator reached max iterations
+    - Measurements: `%{system_time: integer}`
+    - Metadata: `%{iteration: integer}`
 
   ## Compaction Events
 
@@ -225,11 +265,11 @@ defmodule Beamlens.Telemetry do
       [:beamlens, :operator, :execute_error],
       [:beamlens, :operator, :wait],
       [:beamlens, :operator, :think],
+      [:beamlens, :operator, :done],
       [:beamlens, :operator, :llm_error],
       [:beamlens, :operator, :loop_stopped],
       [:beamlens, :operator, :unexpected_message],
       [:beamlens, :coordinator, :started],
-      [:beamlens, :coordinator, :notification_received],
       [:beamlens, :coordinator, :iteration_start],
       [:beamlens, :coordinator, :get_notifications],
       [:beamlens, :coordinator, :update_notification_statuses],
@@ -240,6 +280,16 @@ defmodule Beamlens.Telemetry do
       [:beamlens, :coordinator, :unexpected_message],
       [:beamlens, :coordinator, :remote_notification_received],
       [:beamlens, :coordinator, :takeover],
+      [:beamlens, :coordinator, :invoke_operators],
+      [:beamlens, :coordinator, :message_operator],
+      [:beamlens, :coordinator, :get_operator_statuses],
+      [:beamlens, :coordinator, :wait],
+      [:beamlens, :coordinator, :think],
+      [:beamlens, :coordinator, :pubsub_notification_received],
+      [:beamlens, :coordinator, :operator_notification_received],
+      [:beamlens, :coordinator, :operator_complete],
+      [:beamlens, :coordinator, :operator_crashed],
+      [:beamlens, :coordinator, :max_iterations_reached],
       [:beamlens, :compaction, :start],
       [:beamlens, :compaction, :stop]
     ]

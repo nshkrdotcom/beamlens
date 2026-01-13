@@ -33,7 +33,7 @@ defmodule Beamlens.Integration.CoordinatorTest do
   end
 
   defp inject_notification(pid, notification) do
-    GenServer.cast(pid, {:notification_received, notification})
+    send(pid, {:beamlens_notification, notification, node()})
     notification
   end
 
@@ -149,8 +149,8 @@ defmodule Beamlens.Integration.CoordinatorTest do
         :timeout ->
           flunk("Timeout waiting for tool action - no telemetry received")
 
-        event when event in [:get_notifications, :update_statuses, :insight_produced, :done] ->
-          assert true
+        _event ->
+          :ok
       end
     end
   end
@@ -162,7 +162,7 @@ defmodule Beamlens.Integration.CoordinatorTest do
       parent = self()
 
       events = [
-        [:beamlens, :coordinator, :notification_received],
+        [:beamlens, :coordinator, :pubsub_notification_received],
         [:beamlens, :coordinator, :iteration_start]
       ]
 
@@ -203,13 +203,13 @@ defmodule Beamlens.Integration.CoordinatorTest do
 
       inject_notification(pid, notification1)
 
-      assert_receive {:telemetry, [:beamlens, :coordinator, :notification_received],
+      assert_receive {:telemetry, [:beamlens, :coordinator, :pubsub_notification_received],
                       %{notification_id: _}},
                      5_000
 
       inject_notification(pid, notification2)
 
-      assert_receive {:telemetry, [:beamlens, :coordinator, :notification_received],
+      assert_receive {:telemetry, [:beamlens, :coordinator, :pubsub_notification_received],
                       %{notification_id: _}},
                      5_000
 

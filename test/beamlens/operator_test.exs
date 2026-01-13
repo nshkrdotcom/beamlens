@@ -445,4 +445,79 @@ defmodule Beamlens.OperatorTest do
       {:error, _} = Zoi.parse(schema, %{intent: "done"})
     end
   end
+
+  describe "notify_pid option" do
+    test "stores notify_pid in state when provided" do
+      {:ok, pid} = start_operator_without_loop(notify_pid: self())
+
+      state = :sys.get_state(pid)
+      assert state.notify_pid == self()
+
+      Operator.stop(pid)
+    end
+
+    test "notify_pid defaults to nil when not provided" do
+      {:ok, pid} = start_operator_without_loop()
+
+      state = :sys.get_state(pid)
+      assert state.notify_pid == nil
+
+      Operator.stop(pid)
+    end
+  end
+
+  describe "mode defaults" do
+    test "on_demand mode defaults to start_loop: false" do
+      {:ok, pid} = Operator.start_link(skill: TestSkill, mode: :on_demand)
+
+      state = :sys.get_state(pid)
+      assert state.running == false
+
+      Operator.stop(pid)
+    end
+
+    test "continuous mode defaults to start_loop: true" do
+      {:ok, pid} = Operator.start_link(skill: TestSkill, mode: :continuous)
+
+      state = :sys.get_state(pid)
+      assert state.running == true
+
+      Operator.stop(pid)
+    end
+
+    test "on_demand mode defaults max_iterations to 10" do
+      {:ok, pid} = start_operator_without_loop(mode: :on_demand)
+
+      state = :sys.get_state(pid)
+      assert state.max_iterations == 10
+
+      Operator.stop(pid)
+    end
+
+    test "continuous mode has nil max_iterations" do
+      {:ok, pid} = start_operator_without_loop(mode: :continuous)
+
+      state = :sys.get_state(pid)
+      assert state.max_iterations == nil
+
+      Operator.stop(pid)
+    end
+  end
+
+  describe "run/3 skill resolution" do
+    test "returns error for invalid skill module" do
+      assert {:error, {:invalid_skill_module, :nonexistent}} =
+               Operator.run(:nonexistent, %{})
+    end
+  end
+
+  describe "message/3" do
+    test "exits when operator not found" do
+      assert_raise ArgumentError, fn ->
+        Operator.message(:nonexistent, "test")
+      end
+    catch
+      :exit, _ -> :ok
+    end
+  end
 end

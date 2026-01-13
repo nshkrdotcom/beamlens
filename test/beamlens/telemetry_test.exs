@@ -21,10 +21,10 @@ defmodule Beamlens.TelemetryTest do
   end
 
   describe "event_names/0" do
-    test "returns all 37 event names" do
+    test "returns all 47 event names" do
       events = Telemetry.event_names()
 
-      assert length(events) == 37
+      assert length(events) == 47
     end
 
     test "all events start with :beamlens" do

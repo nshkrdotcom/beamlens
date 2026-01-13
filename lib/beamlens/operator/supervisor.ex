@@ -239,28 +239,21 @@ defmodule Beamlens.Operator.Supervisor do
 
   """
   def configured_operators do
-    # Read from persistent_term (set by Beamlens.Supervisor at startup)
-    # Falls back to application env for backwards compatibility
-    operators =
-      case :persistent_term.get({Beamlens.Supervisor, :operators}, :not_found) do
-        :not_found -> Application.get_env(:beamlens, :operators, [])
-        ops -> ops
-      end
-
-    Enum.map(operators, &extract_operator_name/1)
+    Enum.map(get_operators(), &extract_operator_name/1)
   end
 
   defp extract_operator_name(skill) when is_atom(skill), do: skill
   defp extract_operator_name(opts) when is_list(opts), do: Keyword.fetch!(opts, :name)
 
   defp configured_operator_specs do
-    operators =
-      case :persistent_term.get({Beamlens.Supervisor, :operators}, :not_found) do
-        :not_found -> Application.get_env(:beamlens, :operators, [])
-        ops -> ops
-      end
+    Enum.map(get_operators(), &extract_operator_spec/1)
+  end
 
-    Enum.map(operators, &extract_operator_spec/1)
+  defp get_operators do
+    case :persistent_term.get({Beamlens.Supervisor, :operators}, :not_found) do
+      :not_found -> Application.get_env(:beamlens, :operators, [])
+      ops -> ops
+    end
   end
 
   defp extract_operator_spec(skill) when is_atom(skill) do

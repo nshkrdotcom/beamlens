@@ -44,7 +44,7 @@ defmodule Beamlens.Operator do
   use GenServer
 
   alias Beamlens.LLM.Utils
-  alias Beamlens.Operator.{Notification, Snapshot, Tools}
+  alias Beamlens.Operator.{CompletionResult, Notification, Snapshot, Status, Tools}
   alias Beamlens.Skill.Base, as: BaseSkill
   alias Beamlens.Telemetry
 
@@ -76,6 +76,7 @@ defmodule Beamlens.Operator do
     :caller,
     :pending_task,
     :pending_trace_id,
+    :notify_pid,
     notifications: [],
     snapshots: [],
     iteration: 0,
@@ -101,16 +102,12 @@ defmodule Beamlens.Operator do
     * `:max_iterations` - Maximum LLM iterations before returning in on-demand mode (default: 10)
     * `:compaction_max_tokens` - Token threshold for compaction (default: 50_000)
     * `:compaction_keep_last` - Messages to keep verbatim after compaction (default: 5)
+    * `:notify_pid` - PID to receive real-time notifications and completion messages
 
   """
   def start_link(opts) do
     name = Keyword.get(opts, :name)
-
-    if name do
-      GenServer.start_link(__MODULE__, opts, name: name)
-    else
-      GenServer.start_link(__MODULE__, opts)
-    end
+    GenServer.start_link(__MODULE__, opts, name: name)
   end
 
   @doc """
@@ -119,11 +116,31 @@ defmodule Beamlens.Operator do
   Returns a map with:
     * `:operator` - Domain atom (e.g., `:beam`)
     * `:state` - Current state (`:healthy`, `:observing`, `:warning`, `:critical`)
+    * `:iteration` - Current iteration count
     * `:running` - Boolean indicating if the loop is active
 
   """
   def status(server) do
     GenServer.call(server, :status)
+  end
+
+  @doc """
+  Sends a message to the operator and receives an LLM-generated response.
+
+  The coordinator's LLM generates a custom prompt, and the operator's LLM
+  responds using its full conversation context. Useful for LLM-to-LLM
+  communication where the coordinator needs to understand what the operator
+  is observing.
+
+  Returns `{:ok, response}` with:
+    * `:skill` - The operator's skill ID
+    * `:state` - Current operator state
+    * `:iteration` - Current iteration count
+    * `:response` - The LLM-generated response content
+
+  """
+  def message(server, prompt, timeout \\ 30_000) do
+    GenServer.call(server, {:message, prompt}, timeout)
   end
 
   @doc """
@@ -214,7 +231,6 @@ defmodule Beamlens.Operator do
         {:ok, resolved}
 
       {:error, {:unknown_builtin_skill, _}} ->
-        # Not a built-in skill, try as a custom skill module
         if function_exported?(skill, :id, 0) do
           {:ok, {skill.id(), skill}}
         else
@@ -232,6 +248,7 @@ defmodule Beamlens.Operator do
     max_iterations = max_iterations(mode, opts)
     start_loop = Keyword.get(opts, :start_loop, mode == :continuous)
     run_context = Keyword.get(opts, :context, %{})
+    notify_pid = Keyword.get(opts, :notify_pid)
     client = build_puck_client(skill, client_registry, mode, opts)
 
     context =
@@ -250,6 +267,7 @@ defmodule Beamlens.Operator do
       context: context,
       mode: mode,
       max_iterations: max_iterations,
+      notify_pid: notify_pid,
       iteration: 0,
       state: :healthy,
       running: start_loop
@@ -327,13 +345,35 @@ defmodule Beamlens.Operator do
 
   @impl true
   def handle_call(:status, _from, state) do
-    status = %{
+    status = %Status{
       operator: state.skill.id(),
       state: state.state,
+      iteration: state.iteration,
       running: state.running
     }
 
     {:reply, status, state}
+  end
+
+  def handle_call({:message, prompt}, _from, state) do
+    result =
+      case Puck.call(state.client, prompt, state.context,
+             output_schema: message_response_schema()
+           ) do
+        {:ok, response, _new_context} ->
+          {:ok,
+           %{
+             skill: state.skill.id(),
+             state: state.state,
+             iteration: state.iteration,
+             response: response.content
+           }}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+
+    {:reply, result, state}
   end
 
   @impl true
@@ -426,6 +466,10 @@ defmodule Beamlens.Operator do
           trace_id: trace_id,
           notification: notification
         })
+
+        if state.notify_pid do
+          send(state.notify_pid, {:operator_notification, self(), notification})
+        end
 
         new_state = %{
           state
@@ -714,18 +758,28 @@ defmodule Beamlens.Operator do
   defp baml_function(:continuous), do: "OperatorLoop"
   defp baml_function(:on_demand), do: "OperatorRun"
 
-  defp max_iterations(:on_demand, opts) do
-    opts
-    |> Keyword.get(:max_iterations, 10)
-    |> normalize_max_iterations()
-  end
-
+  defp max_iterations(:on_demand, opts), do: Keyword.get(opts, :max_iterations, 10)
   defp max_iterations(:continuous, _opts), do: nil
 
-  defp normalize_max_iterations(nil), do: 10
-  defp normalize_max_iterations(value), do: value
+  defp message_response_schema do
+    Zoi.object(%{
+      summary: Zoi.string(),
+      findings: Zoi.nullish(Zoi.list(Zoi.string())),
+      concerns: Zoi.nullish(Zoi.list(Zoi.string()))
+    })
+  end
 
   defp finish_on_demand(state, result) do
+    if state.notify_pid do
+      completion_result = %CompletionResult{
+        state: state.state,
+        notifications: Enum.reverse(state.notifications),
+        snapshots: Enum.reverse(state.snapshots)
+      }
+
+      send(state.notify_pid, {:operator_complete, self(), state.skill.id(), completion_result})
+    end
+
     if state.caller do
       GenServer.reply(state.caller, result)
     end

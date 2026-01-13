@@ -129,6 +129,8 @@ defmodule Beamlens do
     * `:operator` - Domain being monitored
     * `:state` - Current operator state (healthy, observing, warning, critical)
     * `:running` - Whether the operator loop is running
+    * `:title` - Human-readable title from skill module
+    * `:description` - Brief description from skill module
   """
   defdelegate list_operators(), to: Beamlens.Operator.Supervisor
 
