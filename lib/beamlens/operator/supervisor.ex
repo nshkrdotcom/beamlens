@@ -6,22 +6,21 @@ defmodule Beamlens.Operator.Supervisor do
 
   ## Starting Operators
 
-      {:ok, pid} = Beamlens.Operator.Supervisor.start_operator(:beam)
+      {:ok, pid} = Beamlens.Operator.Supervisor.start_operator(Beamlens.Skill.Beam)
 
       {:ok, pid} = Beamlens.Operator.Supervisor.start_operator(
-        [name: :custom, skill: MyApp.Skill.Custom]
+        skill: MyApp.Skill.Custom
       )
 
   ## Operator Specifications
 
-  Operators can be specified in two forms:
+  Operators can be specified as:
 
-    * `:skill` - Uses built-in skill module (e.g., `:beam` → `Beamlens.Skill.Beam`)
-    * `[name: atom, skill: module, ...]` - Custom skill module with options
+    * `Module` - A module implementing `Beamlens.Skill` behaviour
+    * `[skill: module, ...]` - Keyword list with skill module and options
 
   ## Operator Options
 
-    * `:name` - Required. Atom identifier for the operator
     * `:skill` - Required. Module implementing `Beamlens.Skill`
     * `:compaction_max_tokens` - Token threshold before compaction (default: 50,000)
     * `:compaction_keep_last` - Messages to keep after compaction (default: 5)
@@ -32,17 +31,16 @@ defmodule Beamlens.Operator.Supervisor do
   use DynamicSupervisor
 
   alias Beamlens.Operator
-  alias Beamlens.Skill.{Beam, Ets, Gc, Logger, Ports, Sup, System}
 
-  @builtin_skills %{
-    beam: Beam,
-    ets: Ets,
-    gc: Gc,
-    logger: Logger,
-    ports: Ports,
-    sup: Sup,
-    system: System
-  }
+  @builtin_skill_modules [
+    Beamlens.Skill.Beam,
+    Beamlens.Skill.Ets,
+    Beamlens.Skill.Gc,
+    Beamlens.Skill.Logger,
+    Beamlens.Skill.Ports,
+    Beamlens.Skill.Sup,
+    Beamlens.Skill.System
+  ]
 
   def start_link(opts \\ []) do
     name = Keyword.get(opts, :name, __MODULE__)
@@ -59,29 +57,25 @@ defmodule Beamlens.Operator.Supervisor do
   """
   def start_operator(supervisor \\ __MODULE__, spec, client_registry \\ nil)
 
-  def start_operator(supervisor, skill, client_registry) when is_atom(skill) do
-    case Map.fetch(@builtin_skills, skill) do
+  def start_operator(supervisor, skill_module, client_registry)
+      when is_atom(skill_module) and not is_nil(skill_module) do
+    case resolve_skill(skill_module) do
       {:ok, module} ->
-        start_operator(
-          supervisor,
-          [name: skill, skill: module],
-          client_registry
-        )
+        start_operator(supervisor, [skill: module], client_registry)
 
-      :error ->
-        {:error, {:unknown_builtin_skill, skill}}
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
   def start_operator(supervisor, opts, client_registry) when is_list(opts) do
-    name = Keyword.fetch!(opts, :name)
     skill = Keyword.fetch!(opts, :skill)
 
     operator_opts =
       opts
-      |> Keyword.drop([:name, :skill])
+      |> Keyword.drop([:skill])
       |> Keyword.merge(
-        name: via_registry(name),
+        name: via_registry(skill),
         skill: skill
       )
 
@@ -165,50 +159,49 @@ defmodule Beamlens.Operator.Supervisor do
   end
 
   @doc """
-  Returns the list of builtin skill names.
+  Returns the list of builtin skill modules.
   """
   def builtin_skills do
-    Map.keys(@builtin_skills)
+    @builtin_skill_modules
   end
 
   @doc """
-  Resolves an operator specification to {name, skill_module}.
+  Resolves a skill module, validating it implements the required callbacks.
 
-  Handles both atom shortcuts for built-in skills and keyword list specs
-  for custom skills.
+  Returns `{:ok, module}` if valid, `{:error, reason}` otherwise.
   """
-  def resolve_skill(skill) when is_atom(skill) do
-    case Map.fetch(@builtin_skills, skill) do
-      {:ok, module} -> {:ok, {skill, module}}
-      :error -> {:error, {:unknown_builtin_skill, skill}}
+  def resolve_skill(skill_module) when is_atom(skill_module) do
+    if Code.ensure_loaded?(skill_module) and
+         function_exported?(skill_module, :title, 0) and
+         function_exported?(skill_module, :snapshot, 0) do
+      {:ok, skill_module}
+    else
+      {:error, {:invalid_skill_module, skill_module}}
     end
   end
 
   def resolve_skill(opts) when is_list(opts) do
-    name = Keyword.fetch!(opts, :name)
     skill = Keyword.fetch!(opts, :skill)
-    {:ok, {name, skill}}
+    resolve_skill(skill)
   end
 
   @doc """
-  Returns all configured operator names.
+  Returns all configured operator modules.
 
-  This includes both built-in skills (specified as atoms) and custom skills
-  (specified as keyword lists with `:name` key). Useful for discovering
-  all operators that could be started, including custom skills.
+  Returns the list of skill modules configured for this application.
 
   ## Example
 
       iex> Beamlens.Operator.Supervisor.configured_operators()
-      [:beam, :ets, :my_custom_skill]
+      [Beamlens.Skill.Beam, Beamlens.Skill.Ets, MyApp.CustomSkill]
 
   """
   def configured_operators do
-    Enum.map(get_operators(), &extract_operator_name/1)
+    Enum.map(get_operators(), &extract_skill_module/1)
   end
 
-  defp extract_operator_name(skill) when is_atom(skill), do: skill
-  defp extract_operator_name(opts) when is_list(opts), do: Keyword.fetch!(opts, :name)
+  defp extract_skill_module(skill_module) when is_atom(skill_module), do: skill_module
+  defp extract_skill_module(opts) when is_list(opts), do: Keyword.fetch!(opts, :skill)
 
   defp configured_operator_specs do
     Enum.map(get_operators(), &extract_operator_spec/1)
@@ -221,12 +214,13 @@ defmodule Beamlens.Operator.Supervisor do
     end
   end
 
-  defp extract_operator_spec(skill) when is_atom(skill) do
-    {skill, Map.fetch!(@builtin_skills, skill)}
+  defp extract_operator_spec(skill_module) when is_atom(skill_module) do
+    {skill_module, skill_module}
   end
 
   defp extract_operator_spec(opts) when is_list(opts) do
-    {Keyword.fetch!(opts, :name), Keyword.fetch!(opts, :skill)}
+    skill = Keyword.fetch!(opts, :skill)
+    {skill, skill}
   end
 
   defp via_registry(name) do

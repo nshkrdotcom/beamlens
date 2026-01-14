@@ -6,10 +6,10 @@ defmodule Beamlens.Operator do
 
   For scheduled or triggered analysis (e.g., Oban workers):
 
-      {:ok, notifications} = Beamlens.Operator.run(:beam, %{reason: "high memory detected"})
+      {:ok, notifications} = Beamlens.Operator.run(Beamlens.Skill.Beam, %{reason: "high memory detected"})
 
       # With custom LLM provider
-      {:ok, notifications} = Beamlens.Operator.run(:beam, %{reason: "high memory"},
+      {:ok, notifications} = Beamlens.Operator.run(Beamlens.Skill.Beam, %{reason: "high memory"},
         client_registry: custom_registry
       )
 
@@ -179,7 +179,7 @@ defmodule Beamlens.Operator do
   def run(skill, context, opts) when is_map(context) and is_list(opts) do
     {client_registry, opts} = Keyword.pop(opts, :client_registry, %{})
 
-    with {:ok, {_name, skill_module}} <- resolve_skill(skill) do
+    with {:ok, skill_module} <- resolve_skill(skill) do
       opts =
         opts
         |> Keyword.put(:skill, skill_module)
@@ -209,18 +209,8 @@ defmodule Beamlens.Operator do
     GenServer.call(server, :await, timeout)
   end
 
-  defp resolve_skill(skill) when is_atom(skill) do
-    case Beamlens.Operator.Supervisor.resolve_skill(skill) do
-      {:ok, resolved} ->
-        {:ok, resolved}
-
-      {:error, {:unknown_builtin_skill, _}} ->
-        if function_exported?(skill, :id, 0) do
-          {:ok, {skill.id(), skill}}
-        else
-          {:error, {:invalid_skill_module, skill}}
-        end
-    end
+  defp resolve_skill(skill_module) when is_atom(skill_module) do
+    Beamlens.Operator.Supervisor.resolve_skill(skill_module)
   end
 
   @impl true
@@ -328,7 +318,7 @@ defmodule Beamlens.Operator do
   @impl true
   def handle_call(:status, _from, state) do
     status = %Status{
-      operator: state.skill.id(),
+      operator: state.skill,
       state: state.state,
       iteration: state.iteration,
       running: state.running
@@ -345,7 +335,7 @@ defmodule Beamlens.Operator do
         {:ok, response, _new_context} ->
           {:ok,
            %{
-             skill: state.skill.id(),
+             skill: state.skill,
              state: state.state,
              iteration: state.iteration,
              response: response.content
@@ -638,7 +628,7 @@ defmodule Beamlens.Operator do
 
   defp build_notification(state, type, summary, severity, snapshots) do
     Notification.new(%{
-      operator: state.skill.id(),
+      operator: state.skill,
       anomaly_type: type,
       severity: severity,
       summary: summary,
@@ -713,7 +703,7 @@ defmodule Beamlens.Operator do
       [:beamlens, :operator, event],
       %{system_time: System.system_time()},
       Map.merge(
-        %{operator: state.skill.id()},
+        %{operator: state.skill},
         extra
       )
     )
@@ -739,7 +729,7 @@ defmodule Beamlens.Operator do
         snapshots: Enum.reverse(state.snapshots)
       }
 
-      send(state.notify_pid, {:operator_complete, self(), state.skill.id(), completion_result})
+      send(state.notify_pid, {:operator_complete, self(), state.skill, completion_result})
     end
 
     if state.caller do
