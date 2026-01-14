@@ -1,8 +1,12 @@
+**Note** This project is in early development but we are actively seeking feedback from early adopters.
+
 # beamlens
 
 Adaptive runtime intelligence for the BEAM.
  
 Move beyond static supervision. Give your application the capability to self-diagnose incidents, analyze traffic patterns, and optimize its own performance.
+
+[![IMAGE ALT TEXT](http://img.youtube.com/vi/oi8vLu5epEc/0.jpg)](http://www.youtube.com/watch?v=oi8vLu5epEc "Beamlens Demo Video")
 
 **[Request free early access to the web dashboard here](https://forms.gle/1KDwTLTC1UNwhGbh7)**. The web dashboard will be **free**, I just want to get early feedback first before releasing to everyone.
 
@@ -80,42 +84,39 @@ end
 
 ## Quick Start
 
-**1. Select a [provider](docs/providers.md)** or use the default Anthropic one by setting your API key:
-
-```bash
-export ANTHROPIC_API_KEY="sk-ant-..."
-```
-
-**2. Add to your supervision tree** in `application.ex`:
+**1. Add to your supervision tree** in `application.ex`:
 
 ```elixir
 def start(_type, _args) do
   children = [
     # ... your other children
-    {Beamlens, client_registry: client_registry()}
+    Beamlens
   ]
 
   Supervisor.start_link(children, strategy: :one_for_one)
 end
-
-defp client_registry do
-  %{
-    primary: "Anthropic",
-    clients: [
-      %{
-        name: "Anthropic",
-        provider: "anthropic",
-        options: %{model: "claude-haiku-4-5-20251001"}
-      }
-    ]
-  }
-end
 ```
 
-**3. Run a diagnosis** (from an alert handler, Oban job, or IEx):
+**2. Select a [provider](docs/providers.md)** or use the default Anthropic one by setting your API key:
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+```
 
 ```elixir
-{:ok, result} = Beamlens.Coordinator.run(%{reason: "memory alert..."})
+client registry = %{
+  primary: "Anthropic",
+  clients: [
+    %{name: "Anthropic", provider: "anthropic",
+      options: %{model: "claude-haiku-4-5-20251001"}}
+  ]
+}
+```
+
+**3. Run beamlens** (from an alert handler, Oban job, or IEx):
+
+```elixir
+{:ok, result} = Beamlens.Coordinator.run(%{reason: "memory alert..."}, client_registry: client_registry)
 ```
 
 ## Examples

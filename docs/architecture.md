@@ -7,7 +7,7 @@ beamlens uses an **autonomous operator** architecture where specialized operator
 Add beamlens to your application's supervision tree:
 
 ```elixir
-{Beamlens, client_registry: client_registry()}
+{Beamlens, []}
 ```
 
 This starts the following components:
@@ -20,10 +20,9 @@ graph TD
     S --> LS[LogStore]
     S --> ES[ExceptionStore]
     S --> OS[Operator.Supervisor]
-    S --> CO[Coordinator]
 ```
 
-Operators are started on-demand via `Beamlens.Operator.run/2` or `Beamlens.Coordinator.run/2`.
+Operators and Coordinators are started on-demand via `Beamlens.Operator.run/2` or `Beamlens.Coordinator.run/2`.
 
 ## Inter-Process Communication
 
@@ -45,20 +44,6 @@ send(notify_pid, {:operator_notification, self(), notification})
 # Operator signals completion
 send(notify_pid, {:operator_complete, self(), Beamlens.Skill.Beam, result})
 ```
-
-### Why Direct Messages?
-
-**Previous Architecture (v0.1.0):**
-- Operators published to PubSub topic
-- Coordinator subscribed to topic
-- Required `phoenix_pubsub` dependency
-- Added latency and complexity for single-node use case
-
-**Current Architecture (v0.2.0+):**
-- Direct `send/2` to coordinator PID
-- Zero latency (local process)
-- No external dependencies
-- Simpler code paths
 
 ### Process Lifecycle
 
@@ -362,11 +347,10 @@ Default LLM: Anthropic Claude Haiku (`claude-haiku-4-5-20251001`)
 
 ## LLM Client Configuration
 
-Configure alternative LLM providers via `:client_registry`:
+Configure alternative LLM providers via `:client_registry` when running analysis:
 
 ```elixir
-{Beamlens,
-  operators: [Beamlens.Skill.Beam],
+{:ok, result} = Beamlens.Coordinator.run(%{reason: "health check"},
   client_registry: %{
     primary: "Ollama",
     clients: [
@@ -374,7 +358,7 @@ Configure alternative LLM providers via `:client_registry`:
         options: %{base_url: "http://localhost:11434/v1", model: "llama3"}}
     ]
   }
-}
+)
 ```
 
 See [providers.md](providers.md) for configuration examples.
@@ -565,9 +549,7 @@ children = [
   {Beamlens.Skill.Ecto.TelemetryStore, repo: MyApp.Repo},
 
   # Configure Beamlens with Ecto skill
-  {Beamlens,
-    client_registry: client_registry(),
-    operators: [[skill: MyApp.EctoSkill]]}
+  {Beamlens, operators: [MyApp.EctoSkill]}
 ]
 
 # Trigger investigation
@@ -695,9 +677,7 @@ end
 Register in supervision tree:
 
 ```elixir
-{Beamlens,
-  client_registry: client_registry(),
-  operators: [Beamlens.Skill.Beam, MyApp.Skills.Postgres]}
+{Beamlens, operators: [Beamlens.Skill.Beam, MyApp.Skills.Postgres]}
 
 # Trigger investigation
 {:ok, result} = Beamlens.Coordinator.run(%{reason: "database performance check"})
