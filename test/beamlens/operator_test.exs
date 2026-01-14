@@ -449,6 +449,102 @@ defmodule Beamlens.OperatorTest do
       assert {:error, {:invalid_skill_module, :nonexistent}} =
                Operator.run(:nonexistent, %{})
     end
+
+    @tag :integration
+    test "accepts valid skill module" do
+      {:ok, notifications} = Operator.run(TestSkill, %{reason: "test"})
+
+      assert is_list(notifications)
+    end
+  end
+
+  describe "run/2 context formatting" do
+    @tag :integration
+    test "formats context with reason" do
+      {:ok, notifications} = Operator.run(TestSkill, %{reason: "memory alert"})
+
+      assert is_list(notifications)
+    end
+
+    @tag :integration
+    test "handles empty context map" do
+      {:ok, notifications} = Operator.run(TestSkill, %{})
+
+      assert is_list(notifications)
+    end
+
+    @tag :integration
+    test "handles context with non-string values" do
+      {:ok, notifications} = Operator.run(TestSkill, %{count: 42, enabled: true})
+
+      assert is_list(notifications)
+    end
+  end
+
+  describe "run/2 options handling" do
+    @tag :integration
+    test "accepts client_registry option" do
+      registry = %{primary: "Test", clients: []}
+      {:ok, notifications} = Operator.run(TestSkill, %{}, client_registry: registry)
+
+      assert is_list(notifications)
+    end
+
+    @tag :integration
+    test "accepts timeout option" do
+      {:ok, notifications} = Operator.run(TestSkill, %{}, timeout: 10_000)
+
+      assert is_list(notifications)
+    end
+
+    @tag :integration
+    test "accepts max_iterations option" do
+      {:ok, notifications} = Operator.run(TestSkill, %{}, max_iterations: 5)
+
+      assert is_list(notifications)
+    end
+
+    @tag :integration
+    test "accepts compaction options" do
+      {:ok, notifications} =
+        Operator.run(
+          TestSkill,
+          %{},
+          compaction_max_tokens: 100_000,
+          compaction_keep_last: 10
+        )
+
+      assert is_list(notifications)
+    end
+  end
+
+  describe "run/2 timeout behavior" do
+    test "respects timeout option by exiting" do
+      Process.flag(:trap_exit, true)
+
+      pid =
+        spawn_link(fn ->
+          Operator.run(TestSkill, %{}, timeout: 50)
+        end)
+
+      assert_receive {:EXIT, ^pid, {:timeout, _}}, 200
+    end
+
+    @tag :integration
+    test "uses default timeout when not specified" do
+      {:ok, notifications} = Operator.run(TestSkill, %{})
+
+      assert is_list(notifications)
+    end
+  end
+
+  describe "run/2 return structure" do
+    @tag :integration
+    test "returns list of notifications" do
+      {:ok, notifications} = Operator.run(TestSkill, %{})
+
+      assert is_list(notifications)
+    end
   end
 
   describe "message/3" do
