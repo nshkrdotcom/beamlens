@@ -7,7 +7,7 @@ defmodule Beamlens.Supervisor do
     * `Beamlens.TaskSupervisor` - For async tasks
     * `Beamlens.OperatorRegistry` - Registry for operator processes
     * `Beamlens.Skill.Logger.LogStore` - Log buffer
-    * `Beamlens.Skill.Exception.ExceptionStore` - Exception buffer
+    * `Beamlens.Skill.Exception.ExceptionStore` - Exception buffer (only if Tower is installed)
     * `Beamlens.Operator.Supervisor` - DynamicSupervisor for operators
     * `Beamlens.Coordinator` - Coordinator process for multi-operator analysis
 
@@ -30,7 +30,6 @@ defmodule Beamlens.Supervisor do
   use Supervisor
 
   alias Beamlens.Operator.Supervisor, as: OperatorSupervisor
-  alias Beamlens.Skill.Exception.ExceptionStore
   alias Beamlens.Skill.Logger.LogStore
 
   def start_link(opts) do
@@ -42,15 +41,26 @@ defmodule Beamlens.Supervisor do
     operators = Keyword.get(opts, :operators, [])
     :persistent_term.put({__MODULE__, :operators}, operators)
 
-    children = [
-      {Task.Supervisor, name: Beamlens.TaskSupervisor},
-      {Registry, keys: :unique, name: Beamlens.OperatorRegistry},
-      LogStore,
-      ExceptionStore,
-      {OperatorSupervisor, []},
-      {Beamlens.Coordinator, Keyword.take(opts, [:client_registry])}
-    ]
+    children =
+      [
+        {Task.Supervisor, name: Beamlens.TaskSupervisor},
+        {Registry, keys: :unique, name: Beamlens.OperatorRegistry},
+        LogStore,
+        exception_store_child(),
+        {OperatorSupervisor, []},
+        {Beamlens.Coordinator, Keyword.take(opts, [:client_registry])}
+      ]
+      |> List.flatten()
 
     Supervisor.init(children, strategy: :one_for_one)
+  end
+
+  # Only include ExceptionStore if Tower is available
+  defp exception_store_child do
+    if Code.ensure_loaded?(Beamlens.Skill.Exception.ExceptionStore) do
+      [Beamlens.Skill.Exception.ExceptionStore]
+    else
+      []
+    end
   end
 end
