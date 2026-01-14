@@ -141,13 +141,30 @@ will be recorded but no action is taken. Good for:
 
 ## Guidelines
 1. Start by getting existing notifications to understand current state
-2. If you need fresh data, invoke relevant operators (they run in parallel)
-3. Use get_operator_statuses() to check which operators are running
-4. Notifications arrive in real-time - check get_notifications() periodically
-5. Use message_operator() to ask running operators about their findings
-6. Wait if operators need more time to gather data
-7. Produce insights for correlated notifications
-8. Call done when finished with all analysis
+2. **IMPORTANT**: When given an investigation reason/context but no notifications exist,
+   ALWAYS invoke the relevant operators first to gather fresh data before concluding.
+   Match the context to available skills (e.g., "logging issues" → Logger, "memory" → Beam/Gc)
+3. If you need fresh data, invoke relevant operators (they run in parallel)
+4. Use get_operator_statuses() to check which operators are running
+5. Notifications arrive in real-time - check get_notifications() periodically
+6. Use message_operator() to ask running operators about their findings
+7. Wait if operators need more time to gather data
+8. Produce insights for correlated notifications
+9. Call done when finished with all analysis - but NEVER call done without first
+   invoking operators when an investigation context was provided
+
+**CRITICAL**: You MUST use ONLY the exact tool names listed above. The available intents are:
+- get_notifications
+- update_notification_statuses (use this to acknowledge OR resolve notifications)
+- produce_insight
+- invoke_operators
+- message_operator
+- get_operator_statuses
+- wait
+- think
+- done
+
+Do NOT invent tool names like "acknowledge_notification" - use "update_notification_statuses" instead.
 
 {% for message in messages %}
 {{ _.role(message.role) }}
@@ -223,12 +240,28 @@ test CoordinatorRun_InvokesOperatorsForFreshData {
   functions [CoordinatorRun]
   args {
     messages [
-      { role "user", content "A BEAM VM health check was requested. No notifications are currently available. Invoke the Beamlens.Skill.Beam operator to gather current metrics." }
+      { role "user", content "Reason: Check BEAM VM health" },
+      { role "assistant", content #"{"intent":"get_notifications","status":"unread"}"# },
+      { role "user", content "[]" }
     ]
     operator_descriptions "- Beamlens.Skill.Beam: BEAM VM health: memory, processes, schedulers, atoms"
     available_skills "Beamlens.Skill.Beam, Beamlens.Skill.Ets, Beamlens.Skill.Gc"
   }
   @@assert(invokes_beam, {{ this.intent == "invoke_operators" and this.skills[0] == "Beamlens.Skill.Beam" }})
+}
+
+test CoordinatorRun_InvokesLoggerForLoggingIssues {
+  functions [CoordinatorRun]
+  args {
+    messages [
+      { role "user", content "Reason: Investigate logging issues" },
+      { role "assistant", content #"{"intent":"get_notifications","status":"unread"}"# },
+      { role "user", content "[]" }
+    ]
+    operator_descriptions "- Beamlens.Skill.Logger: Application logs: error rates, patterns, module-specific issues"
+    available_skills "Beamlens.Skill.Logger"
+  }
+  @@assert(invokes_logger, {{ this.intent == "invoke_operators" and this.skills[0] == "Beamlens.Skill.Logger" }})
 }
 
 test CoordinatorRun_CallsDoneAfterAnalysis {
