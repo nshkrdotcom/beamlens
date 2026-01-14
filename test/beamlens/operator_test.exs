@@ -482,7 +482,7 @@ defmodule Beamlens.OperatorTest do
   describe "run/2 options handling" do
     @tag :integration
     test "accepts client_registry option" do
-      registry = %{primary: "Test", clients: []}
+      registry = %{primary: "Default", clients: []}
       {:ok, notifications} = Operator.run(TestSkill, %{}, client_registry: registry)
 
       assert is_list(notifications)
@@ -546,15 +546,12 @@ defmodule Beamlens.OperatorTest do
   end
 
   describe "run/2 process cleanup" do
-    test "returns error when no client_registry configured" do
-      # TestSkill has no client_registry, so the operator cannot make LLM calls.
-      # This deterministically causes an error.
+    @tag :integration
+    test "uses Default client when no client_registry configured" do
+      # When no client_registry is provided, the Default client from beamlens.baml is used
       result = Operator.run(TestSkill, %{})
 
-      assert match?({:error, _}, result)
-
-      # GenServer.stop is synchronous in the after block of run/2,
-      # so the operator process is already stopped when run returns.
+      assert match?({:ok, _}, result)
     end
 
     test "stops operator process after timeout" do

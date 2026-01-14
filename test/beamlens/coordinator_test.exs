@@ -1908,8 +1908,8 @@ defmodule Beamlens.CoordinatorTest do
 
     @tag :integration
     test "accepts client_registry option" do
-      registry = %{primary: "Test", clients: []}
-      {:ok, result} = Coordinator.run(%{}, client_registry: registry, timeout: 5000)
+      registry = %{primary: "Default", clients: []}
+      {:ok, result} = Coordinator.run(%{}, client_registry: registry, timeout: 30_000)
 
       assert is_map(result)
     end
