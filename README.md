@@ -53,7 +53,9 @@ result.insights
 
 ## Roadmap
 
-This is just the start. Future plans include:
+This is just the start. See the full roadmap [here](https://github.com/orgs/beamlens/projects/1).
+
+Future plans include:
 
 - A web interface for easy access and visualization of insights - **[Request early access here](https://forms.gle/1KDwTLTC1UNwhGbh7)**
 - Better integration with Phoenix and other frameworks and libraries
