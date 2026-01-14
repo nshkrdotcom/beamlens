@@ -90,13 +90,13 @@ defmodule Beamlens.Integration.CoordinatorOperatorTest do
 
       notifications = [
         build_notification(%{
-          operator: :beam,
+          operator: Beamlens.Skill.Beam,
           anomaly_type: "memory_elevated",
           severity: :warning,
           summary: "Memory at 78% - elevated usage"
         }),
         build_notification(%{
-          operator: :beam,
+          operator: Beamlens.Skill.Beam,
           anomaly_type: "scheduler_contention",
           severity: :warning,
           summary: "Run queue at 45 - scheduler pressure"
@@ -127,13 +127,13 @@ defmodule Beamlens.Integration.CoordinatorOperatorTest do
     test "completes with correlated notifications", context do
       notifications = [
         build_notification(%{
-          operator: :beam,
+          operator: Beamlens.Skill.Beam,
           anomaly_type: "memory_elevated",
           severity: :warning,
           summary: "Memory at 85%"
         }),
         build_notification(%{
-          operator: :beam,
+          operator: Beamlens.Skill.Beam,
           anomaly_type: "gc_pressure",
           severity: :warning,
           summary: "High GC frequency"

@@ -18,9 +18,9 @@ defmodule Beamlens.SupervisorTest do
         start_supervised(
           {Beamlens,
            operators: [
-             [name: :beam, skill: Beamlens.Skill.Beam],
-             [name: :ets, skill: Beamlens.Skill.Ets],
-             [name: :system, skill: Beamlens.Skill.System]
+             [skill: Beamlens.Skill.Beam],
+             [skill: Beamlens.Skill.Ets],
+             [skill: Beamlens.Skill.System]
            ]}
         )
 
@@ -31,12 +31,12 @@ defmodule Beamlens.SupervisorTest do
       assert Enum.all?(operators, &(&1.running == false))
 
       names = Enum.map(operators, & &1.name)
-      assert :beam in names
-      assert :ets in names
-      assert :system in names
+      assert Beamlens.Skill.Beam in names
+      assert Beamlens.Skill.Ets in names
+      assert Beamlens.Skill.System in names
 
       # Verify each operator has expected structure (stopped until manually started)
-      beam_op = Enum.find(operators, &(&1.name == :beam))
+      beam_op = Enum.find(operators, &(&1.name == Beamlens.Skill.Beam))
       assert beam_op.state == :stopped
       assert beam_op.title == "BEAM VM"
     end
@@ -46,7 +46,7 @@ defmodule Beamlens.SupervisorTest do
         start_supervised(
           {Beamlens,
            operators: [
-             [name: :beam, skill: Beamlens.Skill.Beam]
+             [skill: Beamlens.Skill.Beam]
            ]}
         )
 

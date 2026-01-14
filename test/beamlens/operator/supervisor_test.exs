@@ -8,8 +8,6 @@ defmodule Beamlens.Operator.SupervisorTest do
   defmodule TestSkill do
     @behaviour Beamlens.Skill
 
-    def id, do: :test_skill
-
     def title, do: "Test Skill"
 
     def description, do: "Test skill for supervisor tests"
@@ -32,6 +30,31 @@ defmodule Beamlens.Operator.SupervisorTest do
     def callback_docs, do: "Test skill callbacks"
   end
 
+  defmodule TestSkill2 do
+    @behaviour Beamlens.Skill
+
+    def title, do: "Test Skill 2"
+
+    def description, do: "Second test skill for supervisor tests"
+
+    def system_prompt, do: "You are a second test skill for supervisor tests."
+
+    def snapshot do
+      %{
+        memory_utilization_pct: 50.0,
+        process_utilization_pct: 15.0,
+        port_utilization_pct: 6.0,
+        atom_utilization_pct: 3.0,
+        scheduler_run_queue: 1,
+        schedulers_online: 8
+      }
+    end
+
+    def callbacks, do: %{}
+
+    def callback_docs, do: "Test skill 2 callbacks"
+  end
+
   setup do
     :persistent_term.erase({Beamlens.Supervisor, :operators})
     start_supervised!({Registry, keys: :unique, name: Beamlens.OperatorRegistry})
@@ -48,7 +71,7 @@ defmodule Beamlens.Operator.SupervisorTest do
     test "returns error for unknown builtin skill", %{supervisor: supervisor} do
       result = OperatorSupervisor.start_operator(supervisor, :unknown)
 
-      assert {:error, {:unknown_builtin_skill, :unknown}} = result
+      assert {:error, {:invalid_skill_module, :unknown}} = result
     end
   end
 
@@ -56,7 +79,6 @@ defmodule Beamlens.Operator.SupervisorTest do
     test "starts custom operator without loop", %{supervisor: supervisor} do
       result =
         OperatorSupervisor.start_operator(supervisor,
-          name: :custom,
           skill: TestSkill,
           start_loop: false
         )
@@ -70,13 +92,12 @@ defmodule Beamlens.Operator.SupervisorTest do
     test "stops running operator", %{supervisor: supervisor} do
       {:ok, pid} =
         OperatorSupervisor.start_operator(supervisor,
-          name: :to_stop,
           skill: TestSkill,
           start_loop: false
         )
 
       ref = Process.monitor(pid)
-      result = OperatorSupervisor.stop_operator(supervisor, :to_stop)
+      result = OperatorSupervisor.stop_operator(supervisor, TestSkill)
 
       assert :ok = result
       assert_receive {:DOWN, ^ref, :process, ^pid, _reason}
@@ -96,21 +117,19 @@ defmodule Beamlens.Operator.SupervisorTest do
 
     test "returns list of operator statuses", %{supervisor: supervisor} do
       :persistent_term.put({Beamlens.Supervisor, :operators}, [
-        [name: :operator1, skill: TestSkill],
-        [name: :operator2, skill: TestSkill]
+        [skill: TestSkill],
+        [skill: TestSkill2]
       ])
 
       on_exit(fn -> :persistent_term.erase({Beamlens.Supervisor, :operators}) end)
 
       OperatorSupervisor.start_operator(supervisor,
-        name: :operator1,
         skill: TestSkill,
         start_loop: false
       )
 
       OperatorSupervisor.start_operator(supervisor,
-        name: :operator2,
-        skill: TestSkill,
+        skill: TestSkill2,
         start_loop: false
       )
 
@@ -118,19 +137,18 @@ defmodule Beamlens.Operator.SupervisorTest do
 
       assert length(operators) == 2
       names = Enum.map(operators, & &1.name)
-      assert :operator1 in names
-      assert :operator2 in names
+      assert TestSkill in names
+      assert TestSkill2 in names
     end
 
     test "includes title and description from skill module", %{supervisor: supervisor} do
       :persistent_term.put({Beamlens.Supervisor, :operators}, [
-        [name: :metadata_test, skill: TestSkill]
+        [skill: TestSkill]
       ])
 
       on_exit(fn -> :persistent_term.erase({Beamlens.Supervisor, :operators}) end)
 
       OperatorSupervisor.start_operator(supervisor,
-        name: :metadata_test,
         skill: TestSkill,
         start_loop: false
       )
@@ -143,7 +161,7 @@ defmodule Beamlens.Operator.SupervisorTest do
 
     test "includes title and description for stopped operators", %{supervisor: _supervisor} do
       :persistent_term.put({Beamlens.Supervisor, :operators}, [
-        [name: :stopped_op, skill: TestSkill]
+        [skill: TestSkill]
       ])
 
       on_exit(fn -> :persistent_term.erase({Beamlens.Supervisor, :operators}) end)
@@ -159,14 +177,13 @@ defmodule Beamlens.Operator.SupervisorTest do
   describe "operator_status/1" do
     test "returns operator status", %{supervisor: supervisor} do
       OperatorSupervisor.start_operator(supervisor,
-        name: :status_test,
         skill: TestSkill,
         start_loop: false
       )
 
-      {:ok, status} = OperatorSupervisor.operator_status(:status_test)
+      {:ok, status} = OperatorSupervisor.operator_status(TestSkill)
 
-      assert status.operator == :test_skill
+      assert status.operator == TestSkill
       assert status.state == :healthy
     end
 
@@ -182,7 +199,7 @@ defmodule Beamlens.Operator.SupervisorTest do
       {:ok, pid} =
         OperatorSupervisor.start_operator(
           supervisor,
-          [name: :registry_test, skill: TestSkill, start_loop: false],
+          [skill: TestSkill, start_loop: false],
           client_registry
         )
 

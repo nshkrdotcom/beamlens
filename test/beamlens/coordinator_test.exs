@@ -839,7 +839,10 @@ defmodule Beamlens.CoordinatorTest do
 
   describe "handle_action - InvokeOperators" do
     setup do
-      :persistent_term.put({Beamlens.Supervisor, :operators}, [:beam, :ets, :gc])
+      :persistent_term.put(
+        {Beamlens.Supervisor, :operators},
+        [Beamlens.Skill.Beam, Beamlens.Skill.Ets, Beamlens.Skill.Gc]
+      )
 
       on_exit(fn ->
         :persistent_term.erase({Beamlens.Supervisor, :operators})
@@ -868,10 +871,15 @@ defmodule Beamlens.CoordinatorTest do
         %{state | running: true, pending_task: task, pending_trace_id: "test-trace"}
       end)
 
-      action_map = %{intent: "invoke_operators", skills: ["beam"], context: "test analysis"}
+      action_map = %{
+        intent: "invoke_operators",
+        skills: ["Beamlens.Skill.Beam"],
+        context: "test analysis"
+      }
+
       send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
 
-      assert_receive {:telemetry, :invoke_operators, %{skills: ["beam"]}}, 1000
+      assert_receive {:telemetry, :invoke_operators, %{skills: ["Beamlens.Skill.Beam"]}}, 1000
 
       stop_coordinator(pid)
       :telemetry.detach({ref, :invoke_operators})
@@ -887,7 +895,7 @@ defmodule Beamlens.CoordinatorTest do
         %{state | running: true, pending_task: task, pending_trace_id: "test-trace"}
       end)
 
-      action_map = %{intent: "invoke_operators", skills: ["beam"]}
+      action_map = %{intent: "invoke_operators", skills: ["Beamlens.Skill.Beam"]}
       send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
 
       state = :sys.get_state(pid)
@@ -910,7 +918,7 @@ defmodule Beamlens.CoordinatorTest do
         %{state | running: true, pending_task: task, pending_trace_id: "test-trace", iteration: 0}
       end)
 
-      action_map = %{intent: "invoke_operators", skills: ["beam"]}
+      action_map = %{intent: "invoke_operators", skills: ["Beamlens.Skill.Beam"]}
       send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
 
       state = :sys.get_state(pid)
@@ -942,7 +950,12 @@ defmodule Beamlens.CoordinatorTest do
         %{state | running: true, pending_task: task, pending_trace_id: "test-trace"}
       end)
 
-      action_map = %{intent: "message_operator", skill: "beam", message: "test message"}
+      action_map = %{
+        intent: "message_operator",
+        skill: "Beamlens.Skill.Beam",
+        message: "test message"
+      }
+
       send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
 
       state = :sys.get_state(pid)
@@ -977,10 +990,15 @@ defmodule Beamlens.CoordinatorTest do
         %{state | running: true, pending_task: task, pending_trace_id: "test-trace"}
       end)
 
-      action_map = %{intent: "message_operator", skill: "beam", message: "test message"}
+      action_map = %{
+        intent: "message_operator",
+        skill: "Beamlens.Skill.Beam",
+        message: "test message"
+      }
+
       send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
 
-      assert_receive {:telemetry, :message_operator, %{skill: "beam"}}, 1000
+      assert_receive {:telemetry, :message_operator, %{skill: "Beamlens.Skill.Beam"}}, 1000
 
       stop_coordinator(pid)
       :telemetry.detach({ref, :message_operator})
@@ -996,7 +1014,12 @@ defmodule Beamlens.CoordinatorTest do
         %{state | running: true, pending_task: task, pending_trace_id: "test-trace", iteration: 0}
       end)
 
-      action_map = %{intent: "message_operator", skill: "beam", message: "test message"}
+      action_map = %{
+        intent: "message_operator",
+        skill: "Beamlens.Skill.Beam",
+        message: "test message"
+      }
+
       send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
 
       state = :sys.get_state(pid)
@@ -1029,6 +1052,60 @@ defmodule Beamlens.CoordinatorTest do
 
       assert content_text =~ "error"
       assert content_text =~ "not running"
+      assert Process.alive?(pid)
+
+      stop_coordinator(pid)
+    end
+
+    test "resolves valid skill module string" do
+      {:ok, pid} = start_coordinator()
+
+      task = Task.async(fn -> :ok end)
+      Task.await(task)
+
+      test_pid = self()
+
+      fake_operator_pid =
+        spawn(fn ->
+          receive do
+            {:"$gen_call", from, {:message, _msg}} ->
+              GenServer.reply(from, {:ok, %{response: "fake response"}})
+              send(test_pid, :operator_received_message)
+          end
+        end)
+
+      :sys.replace_state(pid, fn state ->
+        running_operators =
+          Map.put(state.running_operators, fake_operator_pid, %{
+            skill: Beamlens.Skill.Beam,
+            ref: make_ref(),
+            started_at: DateTime.utc_now()
+          })
+
+        %{
+          state
+          | running: true,
+            pending_task: task,
+            pending_trace_id: "test-trace",
+            running_operators: running_operators
+        }
+      end)
+
+      action_map = %{
+        intent: "message_operator",
+        skill: "Beamlens.Skill.Beam",
+        message: "status check"
+      }
+
+      send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
+
+      assert_receive :operator_received_message, 1000
+
+      state = :sys.get_state(pid)
+      last_message = List.last(state.context.messages)
+      content_text = extract_content_text(last_message.content)
+
+      refute content_text =~ "not running"
       assert Process.alive?(pid)
 
       stop_coordinator(pid)
@@ -1066,7 +1143,7 @@ defmodule Beamlens.CoordinatorTest do
       :sys.replace_state(pid, fn state ->
         running_operators =
           Map.put(state.running_operators, dead_pid, %{
-            skill: :beam,
+            skill: Beamlens.Skill.Beam,
             ref: make_ref(),
             started_at: DateTime.utc_now()
           })
@@ -1230,7 +1307,7 @@ defmodule Beamlens.CoordinatorTest do
       :sys.replace_state(pid, fn state ->
         running_operators =
           Map.put(state.running_operators, operator_pid, %{
-            skill: :beam,
+            skill: Beamlens.Skill.Beam,
             ref: operator_ref,
             started_at: DateTime.utc_now()
           })
@@ -1255,7 +1332,7 @@ defmodule Beamlens.CoordinatorTest do
       :sys.replace_state(pid, fn state ->
         running_operators =
           Map.put(state.running_operators, operator_pid, %{
-            skill: :beam,
+            skill: Beamlens.Skill.Beam,
             ref: operator_ref,
             started_at: DateTime.utc_now()
           })
@@ -1292,7 +1369,7 @@ defmodule Beamlens.CoordinatorTest do
       :sys.replace_state(pid, fn state ->
         running_operators =
           Map.put(state.running_operators, operator_pid, %{
-            skill: :beam,
+            skill: Beamlens.Skill.Beam,
             ref: operator_ref,
             started_at: DateTime.utc_now()
           })
@@ -1302,7 +1379,9 @@ defmodule Beamlens.CoordinatorTest do
 
       send(pid, {:DOWN, operator_ref, :process, operator_pid, :killed})
 
-      assert_receive {:telemetry, :operator_crashed, %{skill: :beam, reason: :killed}}, 1000
+      assert_receive {:telemetry, :operator_crashed,
+                      %{skill: Beamlens.Skill.Beam, reason: :killed}},
+                     1000
 
       stop_coordinator(pid)
       :telemetry.detach({ref, :operator_crashed})
@@ -1329,7 +1408,7 @@ defmodule Beamlens.CoordinatorTest do
       :sys.replace_state(pid, fn state ->
         running_operators =
           Map.put(state.running_operators, operator_pid, %{
-            skill: :beam,
+            skill: Beamlens.Skill.Beam,
             ref: operator_ref,
             started_at: DateTime.utc_now()
           })
@@ -1339,7 +1418,9 @@ defmodule Beamlens.CoordinatorTest do
 
       send(pid, {:EXIT, operator_pid, :boom})
 
-      assert_receive {:telemetry, :operator_crashed, %{skill: :beam, reason: :boom}}, 1000
+      assert_receive {:telemetry, :operator_crashed,
+                      %{skill: Beamlens.Skill.Beam, reason: :boom}},
+                     1000
 
       stop_coordinator(pid)
       :telemetry.detach({ref, :operator_crashed})
@@ -1354,7 +1435,7 @@ defmodule Beamlens.CoordinatorTest do
       :sys.replace_state(pid, fn state ->
         running_operators =
           Map.put(state.running_operators, operator_pid, %{
-            skill: :beam,
+            skill: Beamlens.Skill.Beam,
             ref: operator_ref,
             started_at: DateTime.utc_now()
           })
@@ -1384,12 +1465,12 @@ defmodule Beamlens.CoordinatorTest do
         running_operators =
           state.running_operators
           |> Map.put(operator_pid1, %{
-            skill: :beam,
+            skill: Beamlens.Skill.Beam,
             ref: operator_ref1,
             started_at: DateTime.utc_now()
           })
           |> Map.put(operator_pid2, %{
-            skill: :ets,
+            skill: Beamlens.Skill.Ets,
             ref: operator_ref2,
             started_at: DateTime.utc_now()
           })
@@ -1461,7 +1542,7 @@ defmodule Beamlens.CoordinatorTest do
 
         running_operators =
           Map.put(state.running_operators, operator_pid, %{
-            skill: :beam,
+            skill: Beamlens.Skill.Beam,
             ref: Process.monitor(operator_pid),
             started_at: DateTime.utc_now()
           })
@@ -1519,10 +1600,10 @@ defmodule Beamlens.CoordinatorTest do
     end
 
     test "run/2 extracts skills from opts" do
-      opts = [skills: [:beam, :ets], timeout: 100]
+      opts = [skills: [Beamlens.Skill.Beam, Beamlens.Skill.Ets], timeout: 100]
       {skills, remaining} = Keyword.pop(opts, :skills, nil)
 
-      assert skills == [:beam, :ets]
+      assert skills == [Beamlens.Skill.Beam, Beamlens.Skill.Ets]
       assert remaining == [timeout: 100]
     end
 
@@ -1536,7 +1617,7 @@ defmodule Beamlens.CoordinatorTest do
     end
 
     test "start_link accepts skills option" do
-      {:ok, pid} = start_coordinator(skills: [:beam, :ets])
+      {:ok, pid} = start_coordinator(skills: [Beamlens.Skill.Beam, Beamlens.Skill.Ets])
 
       assert Process.alive?(pid)
 
@@ -1562,7 +1643,7 @@ defmodule Beamlens.CoordinatorTest do
       :sys.replace_state(pid, fn state ->
         running_operators =
           Map.put(state.running_operators, operator_pid, %{
-            skill: :beam,
+            skill: Beamlens.Skill.Beam,
             ref: operator_ref,
             started_at: DateTime.utc_now()
           })
@@ -1577,7 +1658,7 @@ defmodule Beamlens.CoordinatorTest do
         notifications: [notification]
       }
 
-      send(pid, {:operator_complete, operator_pid, :beam, result})
+      send(pid, {:operator_complete, operator_pid, Beamlens.Skill.Beam, result})
 
       state = :sys.get_state(pid)
       assert Map.has_key?(state.notifications, notification.id)
@@ -1595,7 +1676,7 @@ defmodule Beamlens.CoordinatorTest do
       :sys.replace_state(pid, fn state ->
         running_operators =
           Map.put(state.running_operators, operator_pid, %{
-            skill: :beam,
+            skill: Beamlens.Skill.Beam,
             ref: operator_ref,
             started_at: DateTime.utc_now()
           })
@@ -1605,13 +1686,13 @@ defmodule Beamlens.CoordinatorTest do
 
       result = %{summary: "Test result", notifications: []}
 
-      send(pid, {:operator_complete, operator_pid, :beam, result})
+      send(pid, {:operator_complete, operator_pid, Beamlens.Skill.Beam, result})
 
       state = :sys.get_state(pid)
       assert length(state.operator_results) == 1
 
       [operator_result] = state.operator_results
-      assert operator_result.skill == :beam
+      assert operator_result.skill == Beamlens.Skill.Beam
       assert operator_result.summary == "Test result"
 
       stop_coordinator(pid)
@@ -1626,7 +1707,7 @@ defmodule Beamlens.CoordinatorTest do
       :sys.replace_state(pid, fn state ->
         running_operators =
           Map.put(state.running_operators, operator_pid, %{
-            skill: :beam,
+            skill: Beamlens.Skill.Beam,
             ref: operator_ref,
             started_at: DateTime.utc_now()
           })
@@ -1636,7 +1717,7 @@ defmodule Beamlens.CoordinatorTest do
 
       result = %{summary: "Test result", notifications: []}
 
-      send(pid, {:operator_complete, operator_pid, :beam, result})
+      send(pid, {:operator_complete, operator_pid, Beamlens.Skill.Beam, result})
 
       state = :sys.get_state(pid)
       assert map_size(state.running_operators) == 0
@@ -1665,7 +1746,7 @@ defmodule Beamlens.CoordinatorTest do
       :sys.replace_state(pid, fn state ->
         running_operators =
           Map.put(state.running_operators, operator_pid, %{
-            skill: :beam,
+            skill: Beamlens.Skill.Beam,
             ref: operator_ref,
             started_at: DateTime.utc_now()
           })
@@ -1675,9 +1756,11 @@ defmodule Beamlens.CoordinatorTest do
 
       result = %{summary: "Test result", notifications: []}
 
-      send(pid, {:operator_complete, operator_pid, :beam, result})
+      send(pid, {:operator_complete, operator_pid, Beamlens.Skill.Beam, result})
 
-      assert_receive {:telemetry, :operator_complete, %{skill: :beam, result: ^result}}, 1000
+      assert_receive {:telemetry, :operator_complete,
+                      %{skill: Beamlens.Skill.Beam, result: ^result}},
+                     1000
 
       stop_coordinator(pid)
       :telemetry.detach({ref, :operator_complete})
@@ -1691,7 +1774,7 @@ defmodule Beamlens.CoordinatorTest do
 
       state_before = :sys.get_state(pid)
 
-      send(pid, {:operator_complete, unknown_pid, :beam, result})
+      send(pid, {:operator_complete, unknown_pid, Beamlens.Skill.Beam, result})
 
       state_after = :sys.get_state(pid)
       assert state_before.operator_results == state_after.operator_results
@@ -1761,7 +1844,7 @@ defmodule Beamlens.CoordinatorTest do
 
     @tag :integration
     test "accepts skills option" do
-      {:ok, result} = Coordinator.run(%{}, skills: [:beam], timeout: 5000)
+      {:ok, result} = Coordinator.run(%{}, skills: [Beamlens.Skill.Beam], timeout: 5000)
 
       assert is_map(result)
     end

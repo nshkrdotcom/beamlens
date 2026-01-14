@@ -8,8 +8,6 @@ defmodule Beamlens.Integration.OperatorTest do
   defmodule TestSkill do
     @behaviour Beamlens.Skill
 
-    def id, do: :integration_test
-
     def title, do: "Integration Test"
 
     def description, do: "Test skill for integration tests"
@@ -67,7 +65,7 @@ defmodule Beamlens.Integration.OperatorTest do
 
       Task.async(fn -> Operator.await(pid) end)
 
-      assert_receive {:telemetry, :iteration_start, %{operator: :integration_test, iteration: 0}},
+      assert_receive {:telemetry, :iteration_start, %{operator: TestSkill, iteration: 0}},
                      10_000
     end
 

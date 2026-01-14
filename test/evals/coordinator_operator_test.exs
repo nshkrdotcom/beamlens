@@ -18,7 +18,10 @@ defmodule Beamlens.Evals.CoordinatorOperatorTest do
 
   setup do
     # Configure operators for coordinator tests
-    :persistent_term.put({Beamlens.Supervisor, :operators}, [:beam, :ets, :gc])
+    :persistent_term.put(
+      {Beamlens.Supervisor, :operators},
+      [Beamlens.Skill.Beam, Beamlens.Skill.Ets, Beamlens.Skill.Gc]
+    )
 
     on_exit(fn ->
       :persistent_term.erase({Beamlens.Supervisor, :operators})
@@ -65,7 +68,7 @@ defmodule Beamlens.Evals.CoordinatorOperatorTest do
     test "processes pre-seeded notifications", context do
       notifications = [
         build_notification(%{
-          operator: :beam,
+          operator: Beamlens.Skill.Beam,
           anomaly_type: "memory_elevated",
           severity: :warning,
           summary: "Memory at 85% - elevated usage"
@@ -104,13 +107,13 @@ defmodule Beamlens.Evals.CoordinatorOperatorTest do
     test "handles correlated notifications", context do
       notifications = [
         build_notification(%{
-          operator: :beam,
+          operator: Beamlens.Skill.Beam,
           anomaly_type: "memory_elevated",
           severity: :warning,
           summary: "Memory at 85%"
         }),
         build_notification(%{
-          operator: :beam,
+          operator: Beamlens.Skill.Beam,
           anomaly_type: "gc_pressure",
           severity: :warning,
           summary: "High GC frequency"

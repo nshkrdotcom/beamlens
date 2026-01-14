@@ -8,12 +8,12 @@ defmodule Beamlens.Integration.AllSkillsTest do
   use Beamlens.IntegrationCase, async: false
 
   @skills [
-    {:beam, Beamlens.Skill.Beam},
-    {:ets, Beamlens.Skill.Ets},
-    {:gc, Beamlens.Skill.Gc},
-    {:ports, Beamlens.Skill.Ports},
-    {:sup, Beamlens.Skill.Sup},
-    {:exception, Beamlens.Skill.Exception}
+    Beamlens.Skill.Beam,
+    Beamlens.Skill.Ets,
+    Beamlens.Skill.Gc,
+    Beamlens.Skill.Ports,
+    Beamlens.Skill.Sup,
+    Beamlens.Skill.Exception
   ]
 
   setup do
@@ -22,20 +22,19 @@ defmodule Beamlens.Integration.AllSkillsTest do
   end
 
   describe "built-in skills" do
-    for {skill_name, skill_module} <- @skills do
+    for skill_module <- @skills do
       @tag timeout: 30_000
-      test "#{skill_name} skill starts and takes snapshot", context do
+      test "#{inspect(skill_module)} skill starts and takes snapshot", context do
         skill_module = unquote(skill_module)
-        skill_name = unquote(skill_name)
         parent = self()
-        handler_id = "#{skill_name}-snapshot-#{System.unique_integer()}"
+        handler_id = "#{inspect(skill_module)}-snapshot-#{System.unique_integer()}"
         on_exit(fn -> :telemetry.detach(handler_id) end)
 
         :telemetry.attach(
           handler_id,
           [:beamlens, :operator, :take_snapshot],
           fn _event, _measurements, %{operator: o, snapshot_id: id}, _ ->
-            if o == skill_name, do: send(parent, {:snapshot, id})
+            if o == skill_module, do: send(parent, {:snapshot, id})
           end,
           nil
         )
@@ -50,12 +49,9 @@ defmodule Beamlens.Integration.AllSkillsTest do
   end
 
   describe "skill contracts" do
-    for {skill_name, skill_module} <- @skills do
-      test "#{skill_name} implements behaviour correctly" do
+    for skill_module <- @skills do
+      test "#{inspect(skill_module)} implements behaviour correctly" do
         skill_module = unquote(skill_module)
-        skill_name = unquote(skill_name)
-
-        assert skill_module.id() == skill_name
 
         snapshot = skill_module.snapshot()
         assert is_map(snapshot)

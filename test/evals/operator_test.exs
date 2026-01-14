@@ -10,8 +10,6 @@ defmodule Beamlens.Evals.OperatorTest do
   defmodule HealthySkill do
     @behaviour Beamlens.Skill
 
-    def id, do: :eval_healthy
-
     def title, do: "Healthy Skill"
 
     def description, do: "Test skill for operator evals"
