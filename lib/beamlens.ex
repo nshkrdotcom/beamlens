@@ -53,15 +53,13 @@ defmodule Beamlens do
   Options passed to `Beamlens`:
 
     * `:operators` - List of operator configurations (see below)
-    * `:client_registry` - LLM provider configuration (see below)
 
   ### LLM Provider Configuration
 
   By default, BeamLens uses Anthropic (requires `ANTHROPIC_API_KEY` env var).
-  Configure a custom provider via `:client_registry`:
+  Configure a custom provider via `:client_registry` when running investigations:
 
-      {Beamlens,
-        operators: [Beamlens.Skill.Beam],
+      {:ok, result} = Beamlens.Coordinator.run(%{reason: "memory alert"},
         client_registry: %{
           primary: "Ollama",
           clients: [
@@ -71,7 +69,7 @@ defmodule Beamlens do
               options: %{base_url: "http://localhost:11434/v1", model: "qwen3:4b"}
             }
           ]
-        }}
+        })
 
   Supported providers include: `anthropic`, `openai`, `openai-generic` (Ollama),
   `aws-bedrock`, `google-ai`, `azure-openai`, and more.

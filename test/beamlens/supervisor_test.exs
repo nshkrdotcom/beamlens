@@ -1,12 +1,9 @@
 defmodule Beamlens.SupervisorTest do
   use ExUnit.Case, async: false
 
-  describe "start_link/1 with client_registry" do
-    test "starts supervisor with client_registry" do
-      client_registry = %{primary: "Test", clients: []}
-
-      {:ok, supervisor} =
-        start_supervised({Beamlens.Supervisor, client_registry: client_registry, watchers: []})
+  describe "start_link/1" do
+    test "starts supervisor" do
+      {:ok, supervisor} = start_supervised({Beamlens.Supervisor, []})
 
       assert Process.alive?(supervisor)
     end
@@ -39,23 +36,6 @@ defmodule Beamlens.SupervisorTest do
       beam_op = Enum.find(operators, &(&1.name == Beamlens.Skill.Beam))
       assert beam_op.state == :stopped
       assert beam_op.title == "BEAM VM"
-    end
-
-    test "coordinator is started by supervisor" do
-      {:ok, _supervisor} =
-        start_supervised(
-          {Beamlens,
-           operators: [
-             [skill: Beamlens.Skill.Beam]
-           ]}
-        )
-
-      # Verify the supervisor-started coordinator is accessible
-      status = Beamlens.Coordinator.status()
-
-      assert status.running == false
-      assert status.notification_count == 0
-      assert status.iteration == 0
     end
   end
 end

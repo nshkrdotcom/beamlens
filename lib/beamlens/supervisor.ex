@@ -9,17 +9,12 @@ defmodule Beamlens.Supervisor do
     * `Beamlens.Skill.Logger.LogStore` - Log buffer
     * `Beamlens.Skill.Exception.ExceptionStore` - Exception buffer (only if Tower is installed)
     * `Beamlens.Operator.Supervisor` - DynamicSupervisor for operators
-    * `Beamlens.Coordinator` - Coordinator process for multi-operator analysis
 
   ## Configuration
 
       children = [
-        {Beamlens, client_registry: client_registry()}
+        {Beamlens, []}
       ]
-
-  ## Options
-
-    * `:client_registry` - LLM client configuration
 
   ## Advanced Deployments
 
@@ -47,15 +42,13 @@ defmodule Beamlens.Supervisor do
         {Registry, keys: :unique, name: Beamlens.OperatorRegistry},
         LogStore,
         exception_store_child(),
-        {OperatorSupervisor, []},
-        {Beamlens.Coordinator, Keyword.take(opts, [:client_registry])}
+        {OperatorSupervisor, []}
       ]
       |> List.flatten()
 
     Supervisor.init(children, strategy: :one_for_one)
   end
 
-  # Only include ExceptionStore if Tower is available
   defp exception_store_child do
     if Code.ensure_loaded?(Beamlens.Skill.Exception.ExceptionStore) do
       [Beamlens.Skill.Exception.ExceptionStore]
