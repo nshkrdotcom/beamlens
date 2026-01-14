@@ -1699,4 +1699,171 @@ defmodule Beamlens.CoordinatorTest do
       stop_coordinator(pid)
     end
   end
+
+  describe "run/2 - basic execution" do
+    @tag :integration
+    test "spawns coordinator and blocks until completion" do
+      {:ok, result} = Coordinator.run(%{reason: "test"}, timeout: 5000)
+
+      assert is_map(result)
+      assert Map.has_key?(result, :insights)
+      assert Map.has_key?(result, :operator_results)
+    end
+
+    @tag :integration
+    test "returns correct result structure" do
+      {:ok, result} = Coordinator.run(%{reason: "test"}, timeout: 5000)
+
+      assert is_list(result.insights)
+      assert is_list(result.operator_results)
+    end
+  end
+
+  describe "run/2 - context handling" do
+    @tag :integration
+    test "passes context map to coordinator" do
+      {:ok, result} = Coordinator.run(%{reason: "memory alert"}, timeout: 5000)
+
+      assert {:ok, _} = result
+    end
+
+    @tag :integration
+    test "handles empty context map" do
+      {:ok, result} = Coordinator.run(%{}, timeout: 5000)
+
+      assert is_map(result)
+      assert is_list(result.insights)
+    end
+
+    @tag :integration
+    test "run/1 with map delegates to run/2" do
+      {:ok, result} = Coordinator.run(%{reason: "test"})
+
+      assert is_map(result)
+    end
+
+    @tag :integration
+    test "run/1 with keyword list extracts context option" do
+      {:ok, result} = Coordinator.run(context: %{reason: "test"}, timeout: 5000)
+
+      assert is_map(result)
+    end
+  end
+
+  describe "run/2 - options handling" do
+    @tag :integration
+    test "accepts notifications option" do
+      notification = build_test_notification()
+      {:ok, result} = Coordinator.run(%{}, notifications: [notification], timeout: 5000)
+
+      assert is_map(result)
+    end
+
+    @tag :integration
+    test "accepts skills option" do
+      {:ok, result} = Coordinator.run(%{}, skills: [:beam], timeout: 5000)
+
+      assert is_map(result)
+    end
+
+    @tag :integration
+    test "accepts client_registry option" do
+      registry = %{primary: "Test", clients: []}
+      {:ok, result} = Coordinator.run(%{}, client_registry: registry, timeout: 5000)
+
+      assert is_map(result)
+    end
+
+    @tag :integration
+    test "accepts max_iterations option" do
+      {:ok, result} = Coordinator.run(%{}, max_iterations: 5, timeout: 5000)
+
+      assert is_map(result)
+    end
+
+    @tag :integration
+    test "accepts compaction options" do
+      {:ok, result} =
+        Coordinator.run(%{},
+          compaction_max_tokens: 10_000,
+          compaction_keep_last: 3,
+          timeout: 5000
+        )
+
+      assert is_map(result)
+    end
+  end
+
+  describe "run/2 - timeout behavior" do
+    test "respects timeout option by exiting" do
+      Process.flag(:trap_exit, true)
+
+      pid =
+        spawn_link(fn ->
+          Coordinator.run(%{}, timeout: 50)
+        end)
+
+      assert_receive {:EXIT, ^pid, {:timeout, _}}, 200
+    end
+
+    @tag :integration
+    test "uses default timeout when not specified" do
+      {:ok, result} = Coordinator.run(%{reason: "test"})
+
+      assert is_map(result)
+    end
+  end
+
+  describe "run/2 - process cleanup" do
+    @tag :integration
+    test "coordinator process stops after completion" do
+      {:ok, _result} = Coordinator.run(%{}, timeout: 5000)
+
+      refute Enum.any?(Process.list(), fn pid ->
+               case Process.info(pid, :dictionary) do
+                 {:dictionary, dict} ->
+                   Enum.any?(dict, fn
+                     {:"$initial_call", {Beamlens.Coordinator, :init, 1}} -> true
+                     _ -> false
+                   end)
+
+                 nil ->
+                   false
+               end
+             end)
+    end
+
+    test "coordinator process stops even when timeout occurs" do
+      Process.flag(:trap_exit, true)
+      coordinators_before = count_coordinator_processes()
+
+      pid =
+        spawn_link(fn ->
+          Coordinator.run(%{}, timeout: 50)
+        end)
+
+      assert_receive {:EXIT, ^pid, {:timeout, _}}, 200
+
+      coordinators_after = count_coordinator_processes()
+      assert coordinators_before == coordinators_after
+    end
+  end
+
+  defp count_coordinator_processes do
+    Enum.count(Process.list(), &coordinator_process?/1)
+  end
+
+  defp coordinator_process?(pid) do
+    case Process.info(pid, :dictionary) do
+      {:dictionary, dict} -> has_coordinator_initial_call?(dict)
+      nil -> false
+    end
+  end
+
+  defp has_coordinator_initial_call?(dict) do
+    Enum.any?(dict, fn
+      {:"$initial_call", {Beamlens.Coordinator, :init, 1}} -> true
+      _ -> false
+    end)
+  end
 end
