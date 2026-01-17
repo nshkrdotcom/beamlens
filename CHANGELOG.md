@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Google AI (Gemini) provider support for integration tests via `BEAMLENS_TEST_PROVIDER=google-ai`
+
+### Fixed
+
+- Unit tests no longer make LLM provider calls
+- Eval tests now respect `BEAMLENS_TEST_PROVIDER` configuration
+- `OperatorSupervisor.start_operator/2` test uses module-based skill identification
+
 ## [0.2.0] - 2026-01-14
 
 See the updated [README.md](README.md)!

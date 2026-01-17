@@ -59,6 +59,7 @@ defmodule Beamlens do
   By default, BeamLens uses Anthropic (requires `ANTHROPIC_API_KEY` env var).
   Configure a custom provider via `:client_registry` when running investigations:
 
+      # Ollama (local)
       {:ok, result} = Beamlens.Coordinator.run(%{reason: "memory alert"},
         client_registry: %{
           primary: "Ollama",
@@ -71,8 +72,21 @@ defmodule Beamlens do
           ]
         })
 
-  Supported providers include: `anthropic`, `openai`, `openai-generic` (Ollama),
-  `aws-bedrock`, `google-ai`, `azure-openai`, and more.
+      # Google AI (Gemini) - requires GOOGLE_API_KEY env var
+      {:ok, result} = Beamlens.Coordinator.run(%{reason: "memory alert"},
+        client_registry: %{
+          primary: "Gemini",
+          clients: [
+            %{
+              name: "Gemini",
+              provider: "google-ai",
+              options: %{model: "gemini-flash-lite-latest"}
+            }
+          ]
+        })
+
+  Supported providers include: `anthropic`, `openai`, `google-ai`, `openai-generic` (Ollama),
+  `aws-bedrock`, `azure-openai`, and more.
 
   ### Operator Configuration
 
