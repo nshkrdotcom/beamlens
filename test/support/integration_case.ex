@@ -15,7 +15,7 @@ defmodule Beamlens.IntegrationCase do
 
   Returns `{:ok, registry}` or `{:error, reason}`.
 
-  Provider can be "anthropic", "openai", or "ollama".
+  Provider can be "anthropic", "openai", "google-ai", or "ollama".
   Defaults to BEAMLENS_TEST_PROVIDER env var or "anthropic".
   """
   def build_client_registry(provider \\ nil) do
@@ -126,8 +126,30 @@ defmodule Beamlens.IntegrationCase do
     end
   end
 
+  defp do_build_client_registry("google-ai") do
+    case System.get_env("GOOGLE_API_KEY") do
+      nil ->
+        {:error, "GOOGLE_API_KEY not set. Set it or use BEAMLENS_TEST_PROVIDER=ollama"}
+
+      _key ->
+        model = System.get_env("BEAMLENS_TEST_MODEL", "gemini-flash-lite-latest")
+
+        {:ok,
+         %{
+           primary: "Gemini",
+           clients: [
+             %{
+               name: "Gemini",
+               provider: "google-ai",
+               options: %{model: model}
+             }
+           ]
+         }}
+    end
+  end
+
   defp do_build_client_registry(provider) do
-    {:error, "Unknown provider: #{provider}. Use anthropic, openai, or ollama"}
+    {:error, "Unknown provider: #{provider}. Use anthropic, openai, google-ai, or ollama"}
   end
 
   defp check_ollama_available do
