@@ -123,7 +123,7 @@ defmodule Beamlens.TestSupport.Provider do
     ]
 
     puck_client =
-      Beamlens.Testing.mock_client(
+      Puck.Test.mock_client(
         responses,
         default: %Beamlens.Operator.Tools.Done{intent: "done"}
       )

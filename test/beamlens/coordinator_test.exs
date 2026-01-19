@@ -1784,7 +1784,7 @@ defmodule Beamlens.CoordinatorTest do
   describe "puck_client override" do
     test "runs with provided client" do
       client =
-        Beamlens.Testing.mock_client(
+        Puck.Test.mock_client(
           [%Beamlens.Coordinator.Tools.Done{intent: "done"}],
           default: %Beamlens.Coordinator.Tools.Done{intent: "done"}
         )

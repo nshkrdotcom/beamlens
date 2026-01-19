@@ -640,60 +640,19 @@ defmodule Beamlens.Operator do
     })
   end
 
-  defp resolve_snapshots(nil, stored_snapshots) do
-    case latest_snapshot_id(stored_snapshots) do
-      {:ok, latest_id} -> resolve_snapshots([latest_id], stored_snapshots)
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
   defp resolve_snapshots([], _stored_snapshots) do
-    {:error,
-     "snapshot_ids required: notifications must reference at least one snapshot (use \"latest\")"}
+    {:error, "snapshot_ids required: must reference at least one snapshot"}
   end
 
   defp resolve_snapshots(ids, stored_snapshots) when is_list(ids) do
-    case replace_latest_snapshot_ids(ids, stored_snapshots) do
-      {:ok, ids} ->
-        snapshot_map = Map.new(stored_snapshots, fn s -> {s.id, s} end)
-        {found, missing} = Enum.split_with(ids, &Map.has_key?(snapshot_map, &1))
+    snapshot_map = Map.new(stored_snapshots, fn s -> {s.id, s} end)
+    {found, missing} = Enum.split_with(ids, &Map.has_key?(snapshot_map, &1))
 
-        if missing == [] do
-          {:ok, Enum.map(found, &Map.fetch!(snapshot_map, &1))}
-        else
-          {:error, "snapshots not found: #{Enum.join(missing, ", ")}"}
-        end
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  defp resolve_snapshots(_ids, _stored_snapshots) do
-    {:error, "snapshot_ids must be a list, nil, or include \"latest\""}
-  end
-
-  defp replace_latest_snapshot_ids(ids, stored_snapshots) do
-    if Enum.any?(ids, &(&1 == "latest")) do
-      case latest_snapshot_id(stored_snapshots) do
-        {:ok, latest_id} ->
-          {:ok, Enum.map(ids, fn id -> if id == "latest", do: latest_id, else: id end)}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
+    if missing == [] do
+      {:ok, Enum.map(found, &Map.fetch!(snapshot_map, &1))}
     else
-      {:ok, ids}
+      {:error, "snapshots not found: #{Enum.join(missing, ", ")}"}
     end
-  end
-
-  defp latest_snapshot_id([]) do
-    {:error, "snapshot_ids requested \"latest\" but no snapshots available"}
-  end
-
-  defp latest_snapshot_id(stored_snapshots) do
-    snapshot = List.last(stored_snapshots)
-    {:ok, snapshot.id}
   end
 
   defp build_puck_client(skill, client_registry, opts) when is_list(opts) do

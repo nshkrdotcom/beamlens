@@ -513,7 +513,7 @@ defmodule Beamlens.OperatorTest do
         %Beamlens.Operator.Tools.Done{intent: "done"}
       ]
 
-      client = Beamlens.Testing.mock_client(responses)
+      client = Puck.Test.mock_client(responses)
 
       {:ok, pid} =
         Operator.start_link(
@@ -534,55 +534,36 @@ defmodule Beamlens.OperatorTest do
   describe "snapshot_id resolution" do
     alias Beamlens.Operator.Tools.{Done, SendNotification, TakeSnapshot}
 
-    test "send_notification accepts snapshot_ids: [\"latest\"]" do
+    test "send_notification references snapshot via function response" do
       responses = [
         %TakeSnapshot{intent: "take_snapshot"},
-        %SendNotification{
-          intent: "send_notification",
-          type: "process_spike",
-          summary: "process count elevated",
-          severity: :warning,
-          snapshot_ids: ["latest"]
-        },
+        fn messages ->
+          snapshot_id =
+            messages
+            |> Enum.reverse()
+            |> Enum.find_value(fn
+              %{metadata: %{tool_result: true}, content: [%{text: json} | _]} ->
+                case Jason.decode(json) do
+                  {:ok, %{"id" => id, "data" => _, "captured_at" => _}} -> id
+                  _ -> nil
+                end
+
+              _ ->
+                nil
+            end)
+
+          %SendNotification{
+            intent: "send_notification",
+            type: "process_spike",
+            summary: "process count elevated",
+            severity: :warning,
+            snapshot_ids: [snapshot_id]
+          }
+        end,
         %Done{intent: "done"}
       ]
 
-      client = Beamlens.Testing.mock_client(responses)
-
-      {:ok, pid} =
-        Operator.start_link(
-          skill: TestSkill,
-          start_loop: true,
-          notify_pid: self(),
-          puck_client: client
-        )
-
-      Operator.await(pid, 1_000)
-
-      assert_receive {:operator_complete, _, _,
-                      %Beamlens.Operator.CompletionResult{
-                        notifications: [notification],
-                        snapshots: [snapshot]
-                      }},
-                     1_000
-
-      assert Enum.any?(notification.snapshots, &(&1.id == snapshot.id))
-    end
-
-    test "send_notification accepts snapshot_ids: nil" do
-      responses = [
-        %TakeSnapshot{intent: "take_snapshot"},
-        %SendNotification{
-          intent: "send_notification",
-          type: "process_spike",
-          summary: "process count elevated",
-          severity: :warning,
-          snapshot_ids: nil
-        },
-        %Done{intent: "done"}
-      ]
-
-      client = Beamlens.Testing.mock_client(responses)
+      client = Puck.Test.mock_client(responses)
 
       {:ok, pid} =
         Operator.start_link(

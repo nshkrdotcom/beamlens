@@ -121,12 +121,12 @@ client registry = %{
 
 ## Testing
 
-For deterministic tests without API keys, pass a mock `Puck.Client` via `:puck_client`.
-This bypasses BAML and the provider registry.
+For deterministic tests without API keys, use `Puck.Test.mock_client/2` and pass
+the client via `:puck_client`. This bypasses BAML and the provider registry.
 
 ```elixir
 client =
-  Beamlens.Testing.mock_client([
+  Puck.Test.mock_client([
     %Beamlens.Operator.Tools.TakeSnapshot{intent: "take_snapshot"},
     %Beamlens.Operator.Tools.Done{intent: "done"}
   ])
@@ -139,8 +139,8 @@ client =
   )
 ```
 
-When crafting `send_notification` responses, `snapshot_ids` can be `["latest"]`
-or `nil` to reference the most recent snapshot captured via `take_snapshot()`.
+For dynamic responses (e.g., referencing snapshot IDs), use function responses.
+See `Puck.Test` documentation for details.
 
 Live-tagged tests require a real provider. Set `BEAMLENS_TEST_PROVIDER` to `anthropic`, `openai`,
 `google-ai`, or `ollama`. When set to `mock`, live tests are skipped.
