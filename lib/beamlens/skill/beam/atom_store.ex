@@ -1,8 +1,8 @@
-defmodule Beamlens.Skill.Ets.GrowthStore do
+defmodule Beamlens.Skill.Beam.AtomStore do
   @moduledoc """
-  Stores ETS table size history for growth tracking.
+  Stores atom count history for growth tracking.
 
-  Periodically samples ETS table sizes and maintains a configurable
+  Periodically samples atom table usage and maintains a configurable
   history window. All operations are read-only with minimal overhead.
   """
 
@@ -14,7 +14,7 @@ defmodule Beamlens.Skill.Ets.GrowthStore do
   defstruct [:samples, :max_samples, :timer_ref]
 
   @doc """
-  Start the growth store with options.
+  Start the atom store with options.
   """
   def start_link(opts \\ []) do
     {gen_opts, init_opts} = Keyword.split(opts, [:name])
@@ -81,34 +81,12 @@ defmodule Beamlens.Skill.Ets.GrowthStore do
   end
 
   defp capture_sample do
-    word_size = :erlang.system_info(:wordsize)
-
-    table_data =
-      :ets.all()
-      |> Enum.map(fn table ->
-        case :ets.info(table) do
-          :undefined ->
-            nil
-
-          info ->
-            %{
-              name: format_table_name(info[:name] || info[:id]),
-              size: info[:size],
-              memory: info[:memory] * word_size
-            }
-        end
-      end)
-      |> Enum.reject(&is_nil/1)
-
     %{
       timestamp: System.system_time(:millisecond),
-      tables: table_data
+      count: :erlang.system_info(:atom_count),
+      limit: :erlang.system_info(:atom_limit)
     }
   end
-
-  defp format_table_name(name) when is_atom(name), do: Atom.to_string(name)
-  defp format_table_name(ref) when is_reference(ref), do: inspect(ref)
-  defp format_table_name(other), do: inspect(other)
 
   @doc """
   Get all historical samples.
