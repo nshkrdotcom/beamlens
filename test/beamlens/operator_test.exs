@@ -6,6 +6,11 @@ defmodule Beamlens.OperatorTest do
   alias Beamlens.Operator
   alias Beamlens.Operator.Snapshot
 
+  setup_all do
+    start_supervised!(%{id: Puck.Test, start: {Puck.Test, :start_link, []}})
+    :ok
+  end
+
   defmodule TestSkill do
     @behaviour Beamlens.Skill
 
@@ -43,7 +48,6 @@ defmodule Beamlens.OperatorTest do
   end
 
   defp mock_client do
-    # Return an error to gracefully stop the loop after iteration_start telemetry
     Puck.Client.new({Puck.Backends.Mock, error: :test_stop})
   end
 
