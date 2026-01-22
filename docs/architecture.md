@@ -1,10 +1,10 @@
 # Architecture
 
-beamlens uses an **autonomous operator** architecture where specialized operators run LLM-driven loops to monitor skills and detect anomalies. Use `Beamlens.Operator.run/2` for triggered analysis that returns results immediately. Notifications are emitted via telemetry.
+Beamlens uses an **autonomous operator** architecture where specialized operators run LLM-driven loops to monitor skills and detect anomalies. Use `Beamlens.Operator.run/2` for triggered analysis that returns results immediately. Notifications are emitted via telemetry.
 
 ## Supervision Tree
 
-Add beamlens to your application's supervision tree:
+Add Beamlens to your application's supervision tree:
 
 ```elixir
 {Beamlens, []}
@@ -29,7 +29,7 @@ Operators and Coordinator are static, always-running processes invoked via `Beam
 
 ### Operator → Coordinator Communication
 
-beamlens uses direct Erlang message passing for operator-coordinator communication:
+Beamlens uses direct Erlang message passing for operator-coordinator communication:
 
 ```elixir
 # Coordinator invokes static operator
@@ -170,7 +170,7 @@ status = Operator.status(pid)
 
 ### Telemetry Integration
 
-While operators use direct messaging, beamlens still emits telemetry events for observability:
+While operators use direct messaging, Beamlens still emits telemetry events for observability:
 
 ```elixir
 :telemetry.execute(
@@ -347,7 +347,7 @@ See `Beamlens.Telemetry` for the complete event list.
 
 ## LLM Integration
 
-beamlens uses [BAML](https://docs.boundaryml.com) for type-safe LLM prompts via [Puck](https://github.com/bradleygolden/puck). Two BAML functions handle the agent loops:
+Beamlens uses [BAML](https://docs.boundaryml.com) for type-safe LLM prompts via [Puck](https://github.com/bradleygolden/puck). Two BAML functions handle the agent loops:
 
 - **OperatorRun**: Operator analysis loop (uses `done()` to signal completion)
 - **CoordinatorRun**: Coordinator analysis with operator invocation capabilities

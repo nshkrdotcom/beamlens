@@ -1,6 +1,6 @@
 **Note** This project is in early development but we are actively seeking feedback from early adopters.
 
-# beamlens
+# Beamlens
 
 Adaptive runtime intelligence for the BEAM.
  
@@ -20,7 +20,7 @@ Standard monitoring tools show you what is happening (metrics), but they don't u
 
 ## The Solution
 
-beamlens is an adaptive runtime engine that lives inside your supervision tree. It's built on battle-hardened AI practices from the best known techniques in the industry. You wire it into your system and it performs deep analysis for you.
+Beamlens is an adaptive runtime engine that lives inside your supervision tree. It's built on battle-hardened AI practices from the best known techniques in the industry. You wire it into your system and it performs deep analysis for you.
 
 1. **Deep Context**: When triggered, it captures internal state that external monitors miss—ETS key distribution, process dictionary size, and scheduler utilization.
 
@@ -32,15 +32,15 @@ beamlens is an adaptive runtime engine that lives inside your supervision tree. 
 
 * **Sandboxed Analysis**: All investigation logic runs in a restricted environment. The "brain" observes without interfering with the "body."
 
-* **Privacy-First**: Telemetry data is processed within your infrastructure. You choose the LLM provider; your application state is never sent to beamlens servers.
+* **Privacy-First**: Telemetry data is processed within your infrastructure. You choose the LLM provider; your application state is never sent to Beamlens servers.
 
-* **Extensible Skills**: Teach beamlens to understand your domain. If you are building a video platform, give it a skill to analyze `ffmpeg` process metrics.
+* **Extensible Skills**: Teach Beamlens to understand your domain. If you are building a video platform, give it a skill to analyze `ffmpeg` process metrics.
 
 * **Low Overhead**: Operators wait idle until invoked. No LLM calls occur until you trigger analysis.
 
 ## The Result
 
-beamlens translates opaque runtime metrics into semantic explanations.
+Beamlens translates opaque runtime metrics into semantic explanations.
 
 ```elixir
 # You trigger an investigation when telemetry spikes
@@ -113,7 +113,7 @@ client registry = %{
 }
 ```
 
-**3. Run beamlens** (from an alert handler, Oban job, or IEx):
+**3. Run Beamlens** (from an alert handler, Oban job, or IEx):
 
 ```elixir
 {:ok, result} = Beamlens.Coordinator.run(%{reason: "memory alert..."}, client_registry: client_registry)
@@ -165,7 +165,7 @@ end
 
 **2. Creating Custom Skills**
 
-You can teach beamlens to understand your specific business logic. For example, if you use a GenServer to batch requests, generic metrics won't help. You need a custom skill.
+You can teach Beamlens to understand your specific business logic. For example, if you use a GenServer to batch requests, generic metrics won't help. You need a custom skill.
 
 ```elixir
 defmodule MyApp.Skills.Batcher do
@@ -190,7 +190,7 @@ end
 
 **3. Periodic Health Checks (Optimization)**
 
-You can schedule beamlens to run periodically to spot trends before they become alerts.
+You can schedule Beamlens to run periodically to spot trends before they become alerts.
 
 ```elixir
 # In a scheduled job (e.g., Oban)
@@ -220,7 +220,7 @@ end
 
 **5. Automated Remediation (Advanced)**
 
-Once you trust the diagnosis, you can authorize beamlens to fix specific issues. This turns beamlens from a passive observer into an active supervisor.
+Once you trust the diagnosis, you can authorize Beamlens to fix specific issues. This turns Beamlens from a passive observer into an active supervisor.
 
 **Note:** This requires explicit opt-in via the callbacks function.
 
@@ -242,7 +242,7 @@ end
 
 ## Built-in Skills
 
-beamlens includes skills for common BEAM runtime monitoring:
+Beamlens includes skills for common BEAM runtime monitoring:
 
 - **`Beamlens.Skill.Beam`** — BEAM VM health (memory, processes, schedulers, atoms, ports)
 - **`Beamlens.Skill.Ets`** — ETS table monitoring (counts, memory, top tables)

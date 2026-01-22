@@ -1,6 +1,6 @@
 # LLM Provider Configuration
 
-beamlens supports the vast majority of LLM providers. You can configure them in the `client_registry` section of your configuration.
+Beamlens supports the vast majority of LLM providers. You can configure them in the `client_registry` section of your configuration.
 
 ```elixir
 {Beamlens,
@@ -16,7 +16,7 @@ beamlens supports the vast majority of LLM providers. You can configure them in 
   }}
 ```
 
-beamlens utilizes BAML to provide LLM Client support. See the [ClientRegistry](https://docs.boundaryml.com/ref/baml_client/client-registry) documentation if you have questions beyond what this documentation provides.
+Beamlens utilizes BAML to provide LLM Client support. See the [ClientRegistry](https://docs.boundaryml.com/ref/baml_client/client-registry) documentation if you have questions beyond what this documentation provides.
 
 ## Default: Anthropic
 
@@ -239,7 +239,7 @@ Refer to the [BAML OpenRouter documentation](https://docs.boundaryml.com/ref/llm
 
 ### Retry Policy
 
-Handle transient failures with exponential backoff. beamlens includes a `DefaultRetry` policy (3 retries, exponential backoff starting at 200ms):
+Handle transient failures with exponential backoff. Beamlens includes a `DefaultRetry` policy (3 retries, exponential backoff starting at 200ms):
 
 ```elixir
 client_registry: %{
@@ -319,7 +319,7 @@ Each request cycles through the clients in order. Useful for spreading rate limi
 
 ## More Providers
 
-beamlens uses [BAML](https://docs.boundaryml.com/docs/snippets/clients/overview) for LLM integration. Any provider BAML supports works with beamlens:
+Beamlens uses [BAML](https://docs.boundaryml.com/docs/snippets/clients/overview) for LLM integration. Any provider BAML supports works with Beamlens:
 
 - Together AI
 - Groq
