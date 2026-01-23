@@ -1,4 +1,4 @@
-defmodule Beamlens.Skill.Monitor.Detector do
+defmodule Beamlens.Skill.Anomaly.Detector do
   @moduledoc """
   Detects statistical anomalies in BEAM metrics.
 
@@ -11,11 +11,9 @@ defmodule Beamlens.Skill.Monitor.Detector do
   """
 
   use GenServer
-  alias Beamlens.Skill.Monitor.BaselineStore
-  alias Beamlens.Skill.Monitor.MetricStore
-  alias Beamlens.Skill.Monitor.Statistics
-
-  require Logger
+  alias Beamlens.Skill.Anomaly.BaselineStore
+  alias Beamlens.Skill.Anomaly.MetricStore
+  alias Beamlens.Skill.Anomaly.Statistics
 
   @default_collection_interval_ms 30_000
   @default_learning_duration_ms :timer.hours(2)
@@ -79,7 +77,7 @@ defmodule Beamlens.Skill.Monitor.Detector do
     z_threshold = Keyword.get(opts, :z_threshold, @default_z_threshold)
     consecutive_required = Keyword.get(opts, :consecutive_required, @default_consecutive_required)
     cooldown_ms = Keyword.get(opts, :cooldown_ms, @default_cooldown_ms)
-    skills = Keyword.get(opts, :skills, get_registered_skills())
+    skills = Keyword.get(opts, :skills, Beamlens.Supervisor.registered_skills())
     auto_trigger = Keyword.get(opts, :auto_trigger, @default_auto_trigger)
 
     max_triggers_per_hour =
@@ -180,7 +178,12 @@ defmodule Beamlens.Skill.Monitor.Detector do
         end)
       rescue
         e ->
-          Logger.warning("Failed to collect metrics from #{inspect(skill)}: #{inspect(e)}")
+          :telemetry.execute(
+            [:beamlens, :anomaly, :detector, :metric_collection_failed],
+            %{system_time: System.system_time()},
+            %{skill: skill, error: e}
+          )
+
           []
       end
     end)
@@ -199,7 +202,12 @@ defmodule Beamlens.Skill.Monitor.Detector do
     elapsed = System.system_time(:millisecond) - state.learning_start_time
 
     if elapsed >= state.learning_duration_ms do
-      Logger.info("Learning period complete, calculating baselines")
+      :telemetry.execute(
+        [:beamlens, :anomaly, :detector, :learning_complete],
+        %{system_time: System.system_time(), elapsed_ms: elapsed},
+        %{}
+      )
+
       calculate_baselines(state)
 
       %{state | state: :active, learning_start_time: nil}
@@ -229,7 +237,12 @@ defmodule Beamlens.Skill.Monitor.Detector do
         end)
       rescue
         e ->
-          Logger.warning("Failed to calculate baseline for #{inspect(skill)}: #{inspect(e)}")
+          :telemetry.execute(
+            [:beamlens, :anomaly, :detector, :baseline_calculation_failed],
+            %{system_time: System.system_time()},
+            %{skill: skill, error: e}
+          )
+
           :ok
       end
     end)
@@ -280,21 +293,20 @@ defmodule Beamlens.Skill.Monitor.Detector do
 
   defp log_anomalies(anomalies) do
     Enum.each(anomalies, fn anomaly ->
-      Logger.warning(
-        "Anomaly detected: #{inspect(anomaly.skill)}.#{anomaly.metric} = #{anomaly.value}"
+      :telemetry.execute(
+        [:beamlens, :anomaly, :detector, :anomaly_detected],
+        %{system_time: System.system_time(), value: anomaly.value},
+        %{skill: anomaly.skill, metric: anomaly.metric}
       )
     end)
   end
 
   defp escalate_anomalies(state, anomalies) do
-    Logger.error("Anomaly threshold exceeded, escalating to Coordinator")
-
-    anomaly_summary =
-      Enum.map_join(anomalies, ", ", fn a ->
-        "#{inspect(a.skill)}.#{a.metric}: #{a.value}"
-      end)
-
-    Logger.error("Anomalies: #{anomaly_summary}")
+    :telemetry.execute(
+      [:beamlens, :anomaly, :detector, :escalation],
+      %{system_time: System.system_time(), anomaly_count: length(anomalies)},
+      %{anomalies: Enum.map(anomalies, &Map.take(&1, [:skill, :metric, :value]))}
+    )
 
     maybe_trigger_coordinator(state, anomalies)
   end
@@ -306,8 +318,10 @@ defmodule Beamlens.Skill.Monitor.Detector do
     recent_triggers = Enum.filter(state.trigger_history, &(now - &1 < @one_hour_ms))
 
     if length(recent_triggers) >= state.max_triggers_per_hour do
-      Logger.warning(
-        "Coordinator trigger rate-limited (#{length(recent_triggers)} triggers in last hour)"
+      :telemetry.execute(
+        [:beamlens, :anomaly, :detector, :trigger_rate_limited],
+        %{system_time: System.system_time(), triggers_in_last_hour: length(recent_triggers)},
+        %{max_triggers_per_hour: state.max_triggers_per_hour}
       )
 
       %{state | trigger_history: recent_triggers}
@@ -320,7 +334,11 @@ defmodule Beamlens.Skill.Monitor.Detector do
   defp trigger_coordinator(anomalies) do
     case Process.whereis(Beamlens.TaskSupervisor) do
       nil ->
-        Logger.warning("Auto-trigger failed: TaskSupervisor not running")
+        :telemetry.execute(
+          [:beamlens, :anomaly, :detector, :auto_trigger_failed],
+          %{system_time: System.system_time()},
+          %{reason: :task_supervisor_not_running}
+        )
 
       _pid ->
         anomaly_summary = format_anomaly_summary(anomalies)
@@ -340,10 +358,18 @@ defmodule Beamlens.Skill.Monitor.Detector do
   defp run_coordinator(anomaly_summary) do
     case Process.whereis(Beamlens.Coordinator) do
       nil ->
-        Logger.warning("Auto-trigger failed: Coordinator not running")
+        :telemetry.execute(
+          [:beamlens, :anomaly, :detector, :auto_trigger_failed],
+          %{system_time: System.system_time()},
+          %{reason: :coordinator_not_running}
+        )
 
       _pid ->
-        Logger.info("Auto-triggering Coordinator due to anomalies")
+        :telemetry.execute(
+          [:beamlens, :anomaly, :detector, :auto_trigger_started],
+          %{system_time: System.system_time()},
+          %{anomaly_summary: anomaly_summary}
+        )
 
         Beamlens.Coordinator.run(%{
           reason: "Detector anomaly escalation",
@@ -353,7 +379,11 @@ defmodule Beamlens.Skill.Monitor.Detector do
   end
 
   defp enter_cooldown(state) do
-    Logger.info("Entering cooldown period for #{div(state.cooldown_ms, 1000)}s")
+    :telemetry.execute(
+      [:beamlens, :anomaly, :detector, :cooldown_started],
+      %{system_time: System.system_time(), cooldown_ms: state.cooldown_ms},
+      %{}
+    )
 
     %{
       state
@@ -367,17 +397,15 @@ defmodule Beamlens.Skill.Monitor.Detector do
     elapsed = System.system_time(:millisecond) - state.cooldown_start_time
 
     if elapsed >= state.cooldown_ms do
-      Logger.info("Cooldown period complete, resuming active detection")
+      :telemetry.execute(
+        [:beamlens, :anomaly, :detector, :cooldown_complete],
+        %{system_time: System.system_time(), elapsed_ms: elapsed},
+        %{}
+      )
+
       %{state | state: :active, cooldown_start_time: nil}
     else
       state
-    end
-  end
-
-  defp get_registered_skills do
-    case :persistent_term.get({Beamlens.Supervisor, :skills}, nil) do
-      nil -> []
-      skills -> skills
     end
   end
 

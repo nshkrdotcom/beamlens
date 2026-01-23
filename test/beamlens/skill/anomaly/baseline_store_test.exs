@@ -1,7 +1,7 @@
-defmodule Beamlens.Skill.Monitor.BaselineStoreTest do
+defmodule Beamlens.Skill.Anomaly.BaselineStoreTest do
   use ExUnit.Case, async: false
 
-  alias Beamlens.Skill.Monitor.BaselineStore
+  alias Beamlens.Skill.Anomaly.BaselineStore
 
   setup do
     start_supervised!(

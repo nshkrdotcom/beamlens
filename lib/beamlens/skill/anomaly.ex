@@ -1,4 +1,4 @@
-defmodule Beamlens.Skill.Monitor do
+defmodule Beamlens.Skill.Anomaly do
   @moduledoc """
   Self-learning statistical anomaly detection for BEAM metrics.
 
@@ -16,7 +16,7 @@ defmodule Beamlens.Skill.Monitor do
 
   Pass configuration at runtime via the supervision tree:
 
-      {Beamlens.Skill.Monitor.Supervisor,
+      {Beamlens.Skill.Anomaly.Supervisor,
        [
          enabled: true,
          collection_interval_ms: :timer.seconds(30),
@@ -36,7 +36,7 @@ defmodule Beamlens.Skill.Monitor do
 
   @behaviour Beamlens.Skill
 
-  alias Beamlens.Skill.Monitor.Detector
+  alias Beamlens.Skill.Anomaly.Detector
 
   @impl true
   def title, do: "Statistical Anomaly Detection"
@@ -108,10 +108,10 @@ defmodule Beamlens.Skill.Monitor do
     }
   catch
     :exit, {:noproc, _} ->
-      %{error: "Monitor not started", timestamp: System.system_time(:millisecond)}
+      %{error: "Anomaly skill not started", timestamp: System.system_time(:millisecond)}
 
     :exit, {:timeout, _} ->
-      %{error: "Monitor timeout", timestamp: System.system_time(:millisecond)}
+      %{error: "Anomaly skill timeout", timestamp: System.system_time(:millisecond)}
   end
 
   @impl true

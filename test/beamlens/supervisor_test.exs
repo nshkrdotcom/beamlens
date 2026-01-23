@@ -1,7 +1,7 @@
 defmodule Beamlens.SupervisorTest do
   use ExUnit.Case, async: false
 
-  alias Beamlens.Skill.Monitor.Detector
+  alias Beamlens.Skill.Anomaly.Detector
 
   describe "start_link/1" do
     test "starts supervisor" do
@@ -19,7 +19,7 @@ defmodule Beamlens.SupervisorTest do
            skills: [
              Beamlens.Skill.Beam,
              Beamlens.Skill.Ets,
-             Beamlens.Skill.System
+             Beamlens.Skill.Os
            ]}
         )
 
@@ -31,7 +31,7 @@ defmodule Beamlens.SupervisorTest do
       names = Enum.map(operators, & &1.name)
       assert Beamlens.Skill.Beam in names
       assert Beamlens.Skill.Ets in names
-      assert Beamlens.Skill.System in names
+      assert Beamlens.Skill.Os in names
 
       beam_op = Enum.find(operators, &(&1.name == Beamlens.Skill.Beam))
       assert beam_op.state == :healthy
@@ -74,7 +74,7 @@ defmodule Beamlens.SupervisorTest do
           {Beamlens,
            skills: [
              Beamlens.Skill.Beam,
-             {Beamlens.Skill.Monitor,
+             {Beamlens.Skill.Anomaly,
               [
                 enabled: true,
                 collection_interval_ms: :timer.seconds(30),
@@ -87,7 +87,7 @@ defmodule Beamlens.SupervisorTest do
       operators = Beamlens.list_operators()
 
       assert Enum.find(operators, &(&1.name == Beamlens.Skill.Beam))
-      assert Enum.find(operators, &(&1.name == Beamlens.Skill.Monitor))
+      assert Enum.find(operators, &(&1.name == Beamlens.Skill.Anomaly))
     end
 
     test "mixes module and tuple formats" do
@@ -97,7 +97,7 @@ defmodule Beamlens.SupervisorTest do
            skills: [
              Beamlens.Skill.Beam,
              Beamlens.Skill.Ets,
-             {Beamlens.Skill.Monitor, enabled: true}
+             {Beamlens.Skill.Anomaly, enabled: true}
            ]}
         )
 
@@ -106,7 +106,7 @@ defmodule Beamlens.SupervisorTest do
       assert length(operators) == 3
       assert Enum.find(operators, &(&1.name == Beamlens.Skill.Beam))
       assert Enum.find(operators, &(&1.name == Beamlens.Skill.Ets))
-      assert Enum.find(operators, &(&1.name == Beamlens.Skill.Monitor))
+      assert Enum.find(operators, &(&1.name == Beamlens.Skill.Anomaly))
     end
 
     test "collocated config applies to Monitor supervisor" do
@@ -115,7 +115,7 @@ defmodule Beamlens.SupervisorTest do
           {Beamlens,
            skills: [
              Beamlens.Skill.Beam,
-             {Beamlens.Skill.Monitor,
+             {Beamlens.Skill.Anomaly,
               [
                 enabled: true,
                 collection_interval_ms: :timer.seconds(15),

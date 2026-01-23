@@ -37,7 +37,7 @@ defmodule Beamlens.Skill.Ports do
     - Busy port events: processes suspended waiting for port I/O
 
     Correlate with:
-    - System Monitor skill: busy_port and busy_dist_port events
+    - VmEvents skill: busy_port and busy_dist_port events
     - Process info: identify suspended processes and their state
     """
   end
@@ -56,7 +56,7 @@ defmodule Beamlens.Skill.Ports do
 
   @impl true
   def callbacks do
-    alias Beamlens.Skill.SystemMonitor.EventStore
+    alias Beamlens.Skill.VmEvents.EventStore
 
     %{
       "ports_list" => &list_ports/0,
@@ -387,7 +387,7 @@ defmodule Beamlens.Skill.Ports do
   end
 
   def suspended_processes do
-    alias Beamlens.Skill.SystemMonitor.EventStore
+    alias Beamlens.Skill.VmEvents.EventStore
 
     busy_events =
       EventStore.get_events(EventStore, type: "busy_port", limit: 100)

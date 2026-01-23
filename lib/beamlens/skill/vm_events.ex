@@ -1,4 +1,4 @@
-defmodule Beamlens.Skill.SystemMonitor do
+defmodule Beamlens.Skill.VmEvents do
   @moduledoc """
   System Monitor Event skill.
 
@@ -11,7 +11,7 @@ defmodule Beamlens.Skill.SystemMonitor do
 
   @behaviour Beamlens.Skill
 
-  alias Beamlens.Skill.SystemMonitor.EventStore
+  alias Beamlens.Skill.VmEvents.EventStore
 
   @impl true
   def title, do: "System Monitor"

@@ -1,4 +1,4 @@
-defmodule Beamlens.Skill.Monitor.Statistics do
+defmodule Beamlens.Skill.Anomaly.Statistics do
   @moduledoc """
   Pure statistical functions for anomaly detection.
 

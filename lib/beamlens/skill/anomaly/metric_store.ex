@@ -1,4 +1,4 @@
-defmodule Beamlens.Skill.Monitor.MetricStore do
+defmodule Beamlens.Skill.Anomaly.MetricStore do
   @moduledoc """
   Stores time-series metric samples in an ETS table.
 

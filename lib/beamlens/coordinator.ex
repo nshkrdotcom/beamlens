@@ -133,7 +133,7 @@ defmodule Beamlens.Coordinator do
 
       # With specific skills (no pre-configuration needed)
       {:ok, result} = Beamlens.Coordinator.run(%{reason: "memory alert"},
-        skills: [Beamlens.Skill.Beam, Beamlens.Skill.Ets, Beamlens.Skill.System]
+        skills: [Beamlens.Skill.Beam, Beamlens.Skill.Ets, Beamlens.Skill.Os]
       )
 
       # Use all builtins when no operators configured

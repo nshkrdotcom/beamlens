@@ -1,6 +1,6 @@
-defmodule Beamlens.Skill.Monitor.Supervisor do
+defmodule Beamlens.Skill.Anomaly.Supervisor do
   @moduledoc """
-  Supervisor for Monitor components.
+  Supervisor for Anomaly skill components.
 
   Manages the child processes for the statistical anomaly detection system:
 
@@ -13,9 +13,9 @@ defmodule Beamlens.Skill.Monitor.Supervisor do
 
   use Supervisor
 
-  alias Beamlens.Skill.Monitor.BaselineStore
-  alias Beamlens.Skill.Monitor.Detector
-  alias Beamlens.Skill.Monitor.MetricStore
+  alias Beamlens.Skill.Anomaly.BaselineStore
+  alias Beamlens.Skill.Anomaly.Detector
+  alias Beamlens.Skill.Anomaly.MetricStore
 
   @default_collection_interval_ms 30_000
   @default_learning_duration_ms :timer.hours(2)
@@ -37,7 +37,7 @@ defmodule Beamlens.Skill.Monitor.Supervisor do
     enabled = Keyword.get(opts, :enabled, false)
 
     unless enabled do
-      raise ArgumentError, "Monitor skill requires enabled: true in configuration"
+      raise ArgumentError, "Anomaly skill requires enabled: true in configuration"
     end
 
     collection_interval_ms =
@@ -56,7 +56,7 @@ defmodule Beamlens.Skill.Monitor.Supervisor do
     dets_file = Keyword.get(opts, :dets_file)
     auto_save_interval_ms = Keyword.get(opts, :auto_save_interval_ms, :timer.minutes(5))
 
-    skills = Keyword.get(opts, :skills, get_registered_skills())
+    skills = Keyword.get(opts, :skills, Beamlens.Supervisor.registered_skills())
 
     children = [
       {MetricStore,
@@ -89,12 +89,5 @@ defmodule Beamlens.Skill.Monitor.Supervisor do
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
-  end
-
-  defp get_registered_skills do
-    case :persistent_term.get({Beamlens.Supervisor, :skills}, nil) do
-      nil -> []
-      skills -> skills
-    end
   end
 end

@@ -72,7 +72,7 @@ You can also configure which skills to enable:
 ```elixir
 {Beamlens, skills: [
   Beamlens.Skill.Beam,
-  {Beamlens.Skill.Monitor, [enabled: true, collection_interval_ms: 60_000]}
+  {Beamlens.Skill.Anomaly, [enabled: true, collection_interval_ms: 60_000]}
 ]}
 ```
 
@@ -206,12 +206,12 @@ Beamlens includes skills for common BEAM runtime monitoring:
 - **`Beamlens.Skill.Ets`** — ETS table monitoring (counts, memory, top tables)
 - **`Beamlens.Skill.Gc`** — Garbage collection statistics
 - **`Beamlens.Skill.Logger`** — Application log analysis (error rates, patterns)
-- **`Beamlens.Skill.Monitor`** — Statistical anomaly detection with auto-trigger capabilities
+- **`Beamlens.Skill.Anomaly`** — Statistical anomaly detection with auto-trigger capabilities
 - **`Beamlens.Skill.Overload`** — Message queue overload analysis and bottleneck detection
 - **`Beamlens.Skill.Ports`** — Port and socket monitoring
-- **`Beamlens.Skill.Sup`** — Supervisor tree inspection
-- **`Beamlens.Skill.System`** — OS-level metrics (CPU, memory, disk via `os_mon`)
-- **`Beamlens.Skill.SystemMonitor`** — System event monitoring (long GC, large heap, etc.)
+- **`Beamlens.Skill.Supervisor`** — Supervisor tree inspection
+- **`Beamlens.Skill.Os`** — OS-level metrics (CPU, memory, disk via `os_mon`)
+- **`Beamlens.Skill.VmEvents`** — System event monitoring (long GC, large heap, etc.)
 - **`Beamlens.Skill.Tracer`** — Process tracing for debugging
 
 ### Experimental Skills

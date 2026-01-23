@@ -1,4 +1,4 @@
-defmodule Beamlens.Skill.Sup do
+defmodule Beamlens.Skill.Supervisor do
   @moduledoc """
   Supervisor monitoring skill.
 
@@ -318,8 +318,6 @@ defmodule Beamlens.Skill.Sup do
   defp format_pid(:restarting), do: "restarting"
   defp format_pid(other), do: inspect(other)
 
-  # Unlinked process detection
-
   defp unlinked_process?(pid) do
     case Process.info(pid, [:links, :monitors, :dictionary]) do
       [links: [], monitors: [], dictionary: dict] ->
@@ -399,8 +397,6 @@ defmodule Beamlens.Skill.Sup do
   defp format_fun(fun) when is_atom(fun), do: Atom.to_string(fun)
   defp format_fun(fun), do: inspect(fun)
 
-  # Orphaned process detection
-
   defp orphaned_process?(pid) do
     case Process.info(pid, :dictionary) do
       {:dictionary, dict} ->
@@ -458,8 +454,6 @@ defmodule Beamlens.Skill.Sup do
         nil
     end
   end
-
-  # Tree integrity checking
 
   defp check_tree_integrity(sup_pid) do
     case safe_which_children(sup_pid) do
@@ -534,8 +528,6 @@ defmodule Beamlens.Skill.Sup do
       pid == :restarting
     end)
   end
-
-  # Zombie children detection
 
   defp find_zombie_children(sup_pid) do
     case safe_which_children(sup_pid) do

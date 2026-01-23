@@ -1,7 +1,7 @@
-defmodule Beamlens.Skill.Monitor.MetricStoreTest do
+defmodule Beamlens.Skill.Anomaly.MetricStoreTest do
   use ExUnit.Case
 
-  alias Beamlens.Skill.Monitor.MetricStore
+  alias Beamlens.Skill.Anomaly.MetricStore
 
   setup do
     {:ok, pid} = MetricStore.start_link([])

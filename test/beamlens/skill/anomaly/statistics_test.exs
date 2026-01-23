@@ -1,7 +1,7 @@
-defmodule Beamlens.Skill.Monitor.StatisticsTest do
+defmodule Beamlens.Skill.Anomaly.StatisticsTest do
   use ExUnit.Case
 
-  alias Beamlens.Skill.Monitor.Statistics
+  alias Beamlens.Skill.Anomaly.Statistics
 
   describe "mean/1" do
     test "calculates arithmetic mean" do

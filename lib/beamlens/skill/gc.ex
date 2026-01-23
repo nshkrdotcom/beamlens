@@ -312,7 +312,7 @@ defmodule Beamlens.Skill.Gc do
   defp has_registered_name?(_), do: false
 
   defp get_long_gcs(limit) when is_number(limit) do
-    alias Beamlens.Skill.SystemMonitor.EventStore
+    alias Beamlens.Skill.VmEvents.EventStore
 
     case Process.whereis(EventStore) do
       nil ->

@@ -1,13 +1,13 @@
-defmodule Beamlens.Skill.SystemTest do
+defmodule Beamlens.Skill.OsTest do
   @moduledoc false
 
   use ExUnit.Case, async: false
 
-  alias Beamlens.Skill.System
+  alias Beamlens.Skill.Os
 
   describe "title/0" do
     test "returns a non-empty string" do
-      title = System.title()
+      title = Os.title()
 
       assert is_binary(title)
       assert String.length(title) > 0
@@ -16,7 +16,7 @@ defmodule Beamlens.Skill.SystemTest do
 
   describe "description/0" do
     test "returns a non-empty string" do
-      description = System.description()
+      description = Os.description()
 
       assert is_binary(description)
       assert String.length(description) > 0
@@ -25,7 +25,7 @@ defmodule Beamlens.Skill.SystemTest do
 
   describe "system_prompt/0" do
     test "returns a non-empty string" do
-      system_prompt = System.system_prompt()
+      system_prompt = Os.system_prompt()
 
       assert is_binary(system_prompt)
       assert String.length(system_prompt) > 0
@@ -34,7 +34,7 @@ defmodule Beamlens.Skill.SystemTest do
 
   describe "snapshot/0" do
     test "returns expected keys" do
-      snapshot = System.snapshot()
+      snapshot = Os.snapshot()
 
       assert Map.has_key?(snapshot, :cpu_load_1m)
       assert Map.has_key?(snapshot, :cpu_load_5m)
@@ -44,7 +44,7 @@ defmodule Beamlens.Skill.SystemTest do
     end
 
     test "cpu load values are floats" do
-      snapshot = System.snapshot()
+      snapshot = Os.snapshot()
 
       assert is_float(snapshot.cpu_load_1m)
       assert is_float(snapshot.cpu_load_5m)
@@ -52,7 +52,7 @@ defmodule Beamlens.Skill.SystemTest do
     end
 
     test "memory_used_pct is a valid percentage" do
-      snapshot = System.snapshot()
+      snapshot = Os.snapshot()
 
       assert is_float(snapshot.memory_used_pct)
       assert snapshot.memory_used_pct >= 0
@@ -60,7 +60,7 @@ defmodule Beamlens.Skill.SystemTest do
     end
 
     test "disk_max_used_pct is a valid percentage" do
-      snapshot = System.snapshot()
+      snapshot = Os.snapshot()
 
       assert is_integer(snapshot.disk_max_used_pct)
       assert snapshot.disk_max_used_pct >= 0
@@ -70,7 +70,7 @@ defmodule Beamlens.Skill.SystemTest do
 
   describe "callbacks/0" do
     test "returns callback map with expected keys" do
-      callbacks = System.callbacks()
+      callbacks = Os.callbacks()
 
       assert is_map(callbacks)
       assert Map.has_key?(callbacks, "system_get_cpu")
@@ -79,7 +79,7 @@ defmodule Beamlens.Skill.SystemTest do
     end
 
     test "callbacks are functions with correct arity" do
-      callbacks = System.callbacks()
+      callbacks = Os.callbacks()
 
       assert is_function(callbacks["system_get_cpu"], 0)
       assert is_function(callbacks["system_get_memory"], 0)
@@ -89,7 +89,7 @@ defmodule Beamlens.Skill.SystemTest do
 
   describe "system_get_cpu callback" do
     test "returns cpu metrics" do
-      stats = System.callbacks()["system_get_cpu"].()
+      stats = Os.callbacks()["system_get_cpu"].()
 
       assert is_float(stats.load_1m)
       assert is_float(stats.load_5m)
@@ -98,7 +98,7 @@ defmodule Beamlens.Skill.SystemTest do
     end
 
     test "load values are non-negative" do
-      stats = System.callbacks()["system_get_cpu"].()
+      stats = Os.callbacks()["system_get_cpu"].()
 
       assert stats.load_1m >= 0
       assert stats.load_5m >= 0
@@ -108,7 +108,7 @@ defmodule Beamlens.Skill.SystemTest do
 
   describe "system_get_memory callback" do
     test "returns memory stats in MB" do
-      stats = System.callbacks()["system_get_memory"].()
+      stats = Os.callbacks()["system_get_memory"].()
 
       assert is_float(stats.total_mb)
       assert is_float(stats.used_mb)
@@ -119,13 +119,13 @@ defmodule Beamlens.Skill.SystemTest do
     end
 
     test "total is positive" do
-      stats = System.callbacks()["system_get_memory"].()
+      stats = Os.callbacks()["system_get_memory"].()
 
       assert stats.total_mb > 0
     end
 
     test "used_pct is valid percentage" do
-      stats = System.callbacks()["system_get_memory"].()
+      stats = Os.callbacks()["system_get_memory"].()
 
       assert stats.used_pct >= 0
       assert stats.used_pct <= 100
@@ -134,13 +134,13 @@ defmodule Beamlens.Skill.SystemTest do
 
   describe "system_get_disks callback" do
     test "returns list of disk info" do
-      disks = System.callbacks()["system_get_disks"].()
+      disks = Os.callbacks()["system_get_disks"].()
 
       assert is_list(disks)
     end
 
     test "each disk has expected fields" do
-      disks = System.callbacks()["system_get_disks"].()
+      disks = Os.callbacks()["system_get_disks"].()
 
       assert disks != [], "Expected at least one disk mount"
 
@@ -151,7 +151,7 @@ defmodule Beamlens.Skill.SystemTest do
     end
 
     test "disk used_pct values are valid percentages" do
-      disks = System.callbacks()["system_get_disks"].()
+      disks = Os.callbacks()["system_get_disks"].()
 
       Enum.each(disks, fn disk ->
         assert disk.used_pct >= 0
@@ -162,14 +162,14 @@ defmodule Beamlens.Skill.SystemTest do
 
   describe "callback_docs/0" do
     test "returns non-empty string" do
-      docs = System.callback_docs()
+      docs = Os.callback_docs()
 
       assert is_binary(docs)
       assert String.length(docs) > 0
     end
 
     test "documents all callbacks" do
-      docs = System.callback_docs()
+      docs = Os.callback_docs()
 
       assert docs =~ "system_get_cpu"
       assert docs =~ "system_get_memory"

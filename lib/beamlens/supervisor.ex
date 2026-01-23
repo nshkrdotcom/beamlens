@@ -8,10 +8,10 @@ defmodule Beamlens.Supervisor do
     * `Beamlens.OperatorRegistry` - Registry for operator processes
     * `Beamlens.Skill.Logger.LogStore` - Log buffer
     * `Beamlens.Skill.Exception.ExceptionStore` - Exception buffer (only if Tower is installed)
-    * `Beamlens.Skill.SystemMonitor.EventStore` - System monitor event buffer (only if SystemMonitor skill is enabled)
+    * `Beamlens.Skill.VmEvents.EventStore` - System monitor event buffer (only if VmEvents skill is enabled)
     * `Beamlens.Skill.Ets.GrowthStore` - ETS growth tracking buffer (only if Ets skill is enabled)
     * `Beamlens.Skill.Beam.AtomStore` - Atom growth tracking buffer (only if Beam skill is enabled)
-    * `Beamlens.Skill.Monitor.Supervisor` - Statistical anomaly detection (only if Monitor skill is enabled and configured with enabled: true)
+    * `Beamlens.Skill.Anomaly.Supervisor` - Statistical anomaly detection (only if Anomaly skill is enabled and configured with enabled: true)
     * `Beamlens.Coordinator` - Static coordinator process
     * `Beamlens.Operator.Supervisor` - Supervisor for static operator processes
 
@@ -23,7 +23,7 @@ defmodule Beamlens.Supervisor do
         {Beamlens,
          skills: [
            Beamlens.Skill.Beam,
-           {Beamlens.Skill.Monitor, [
+           {Beamlens.Skill.Anomaly, [
              enabled: true,
              collection_interval_ms: :timer.seconds(30),
              learning_duration_ms: :timer.hours(2),
@@ -34,16 +34,16 @@ defmodule Beamlens.Supervisor do
          ]}
       ]
 
-  ## Monitor Skill Configuration
+  ## Anomaly Skill Configuration
 
-  The Monitor skill is opt-in and requires explicit configuration with enabled: true.
+  The Anomaly skill is opt-in and requires explicit configuration with enabled: true.
   Configuration is collocated with the skill in the skills list:
 
       children = [
         {Beamlens,
          skills: [
            Beamlens.Skill.Beam,
-           {Beamlens.Skill.Monitor, [
+           {Beamlens.Skill.Anomaly, [
              enabled: true,
              collection_interval_ms: :timer.seconds(30)
            ]}
@@ -64,6 +64,15 @@ defmodule Beamlens.Supervisor do
 
   def start_link(opts) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
+  end
+
+  @doc """
+  Returns the list of registered skill modules.
+
+  Returns an empty list if Beamlens hasn't been started yet.
+  """
+  def registered_skills do
+    :persistent_term.get({__MODULE__, :skills}, [])
   end
 
   @impl true
@@ -125,8 +134,8 @@ defmodule Beamlens.Supervisor do
   end
 
   defp system_monitor_child(skills) do
-    if Beamlens.Skill.SystemMonitor in skills do
-      [Beamlens.Skill.SystemMonitor.EventStore]
+    if Beamlens.Skill.VmEvents in skills do
+      [Beamlens.Skill.VmEvents.EventStore]
     else
       []
     end
@@ -149,12 +158,12 @@ defmodule Beamlens.Supervisor do
   end
 
   defp monitor_child(skills, skill_configs) do
-    if Beamlens.Skill.Monitor in skills do
-      monitor_opts = Map.get(skill_configs, Beamlens.Skill.Monitor, [])
+    if Beamlens.Skill.Anomaly in skills do
+      monitor_opts = Map.get(skill_configs, Beamlens.Skill.Anomaly, [])
       enabled = Keyword.get(monitor_opts, :enabled, false)
 
       if enabled do
-        [{Beamlens.Skill.Monitor.Supervisor, monitor_opts}]
+        [{Beamlens.Skill.Anomaly.Supervisor, monitor_opts}]
       else
         []
       end

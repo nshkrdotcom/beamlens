@@ -1,4 +1,4 @@
-defmodule Beamlens.Skill.SystemMonitor.EventStore do
+defmodule Beamlens.Skill.VmEvents.EventStore do
   @moduledoc """
   In-memory ring buffer for system monitor events.
 
@@ -16,7 +16,7 @@ defmodule Beamlens.Skill.SystemMonitor.EventStore do
 
   Start this GenServer in your supervision tree to begin capturing events:
 
-      {Beamlens.Skill.SystemMonitor.EventStore, []}
+      {Beamlens.Skill.VmEvents.EventStore, []}
 
   Events are automatically captured when the process is running and
   system_monitor is configured to send messages to it.

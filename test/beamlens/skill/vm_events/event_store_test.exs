@@ -1,9 +1,9 @@
-defmodule Beamlens.Skill.SystemMonitor.EventStoreTest do
+defmodule Beamlens.Skill.VmEvents.EventStoreTest do
   @moduledoc false
 
   use ExUnit.Case, async: false
 
-  alias Beamlens.Skill.SystemMonitor.EventStore
+  alias Beamlens.Skill.VmEvents.EventStore
 
   @test_name :test_system_monitor_event_store
 

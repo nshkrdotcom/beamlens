@@ -1,13 +1,13 @@
-defmodule Beamlens.Skill.SupTest do
+defmodule Beamlens.Skill.SupervisorTest do
   @moduledoc false
 
   use ExUnit.Case, async: true
 
-  alias Beamlens.Skill.Sup
+  alias Beamlens.Skill.Supervisor, as: SkillSupervisor
 
   describe "title/0" do
     test "returns a non-empty string" do
-      title = Sup.title()
+      title = SkillSupervisor.title()
 
       assert is_binary(title)
       assert String.length(title) > 0
@@ -16,7 +16,7 @@ defmodule Beamlens.Skill.SupTest do
 
   describe "description/0" do
     test "returns a non-empty string" do
-      description = Sup.description()
+      description = SkillSupervisor.description()
 
       assert is_binary(description)
       assert String.length(description) > 0
@@ -25,7 +25,7 @@ defmodule Beamlens.Skill.SupTest do
 
   describe "system_prompt/0" do
     test "returns a non-empty string" do
-      system_prompt = Sup.system_prompt()
+      system_prompt = SkillSupervisor.system_prompt()
 
       assert is_binary(system_prompt)
       assert String.length(system_prompt) > 0
@@ -34,21 +34,21 @@ defmodule Beamlens.Skill.SupTest do
 
   describe "snapshot/0" do
     test "returns supervisor count and children" do
-      snapshot = Sup.snapshot()
+      snapshot = SkillSupervisor.snapshot()
 
       assert is_integer(snapshot.supervisor_count)
       assert is_integer(snapshot.total_children)
     end
 
     test "supervisor_count is non-negative" do
-      snapshot = Sup.snapshot()
+      snapshot = SkillSupervisor.snapshot()
       assert snapshot.supervisor_count >= 0
     end
   end
 
   describe "callbacks/0" do
     test "returns callback map with expected keys" do
-      callbacks = Sup.callbacks()
+      callbacks = SkillSupervisor.callbacks()
 
       assert is_map(callbacks)
       assert Map.has_key?(callbacks, "sup_list")
@@ -61,7 +61,7 @@ defmodule Beamlens.Skill.SupTest do
     end
 
     test "callbacks are functions with correct arity" do
-      callbacks = Sup.callbacks()
+      callbacks = SkillSupervisor.callbacks()
 
       assert is_function(callbacks["sup_list"], 0)
       assert is_function(callbacks["sup_children"], 1)
@@ -75,27 +75,28 @@ defmodule Beamlens.Skill.SupTest do
 
   describe "sup_list callback" do
     test "returns list of supervisors" do
-      result = Sup.callbacks()["sup_list"].()
+      result = SkillSupervisor.callbacks()["sup_list"].()
 
       assert is_list(result)
     end
 
-    test "supervisor entries have expected fields when supervisors exist" do
-      result = Sup.callbacks()["sup_list"].()
+    test "supervisor entries have expected fields" do
+      result = SkillSupervisor.callbacks()["sup_list"].()
 
-      if result != [] do
-        [sup | _] = result
-        assert Map.has_key?(sup, :name)
-        assert Map.has_key?(sup, :pid)
-        assert Map.has_key?(sup, :child_count)
-        assert Map.has_key?(sup, :active_children)
-      end
+      # BEAM always has supervisors running (kernel, ExUnit, etc.)
+      assert result != []
+
+      [sup | _] = result
+      assert Map.has_key?(sup, :name)
+      assert Map.has_key?(sup, :pid)
+      assert Map.has_key?(sup, :child_count)
+      assert Map.has_key?(sup, :active_children)
     end
   end
 
   describe "sup_children callback" do
     test "returns error for non-existent supervisor" do
-      result = Sup.callbacks()["sup_children"].("nonexistent_supervisor_xyz")
+      result = SkillSupervisor.callbacks()["sup_children"].("nonexistent_supervisor_xyz")
 
       assert result.error == "supervisor_not_found"
     end
@@ -103,7 +104,7 @@ defmodule Beamlens.Skill.SupTest do
 
   describe "sup_tree callback" do
     test "returns error for non-existent supervisor" do
-      result = Sup.callbacks()["sup_tree"].("nonexistent_supervisor_xyz")
+      result = SkillSupervisor.callbacks()["sup_tree"].("nonexistent_supervisor_xyz")
 
       assert result.error == "supervisor_not_found"
     end
@@ -111,14 +112,14 @@ defmodule Beamlens.Skill.SupTest do
 
   describe "callback_docs/0" do
     test "returns non-empty string" do
-      docs = Sup.callback_docs()
+      docs = SkillSupervisor.callback_docs()
 
       assert is_binary(docs)
       assert String.length(docs) > 0
     end
 
     test "documents all callbacks" do
-      docs = Sup.callback_docs()
+      docs = SkillSupervisor.callback_docs()
 
       assert docs =~ "sup_list"
       assert docs =~ "sup_children"
@@ -132,13 +133,13 @@ defmodule Beamlens.Skill.SupTest do
 
   describe "sup_unlinked_processes callback" do
     test "returns a list" do
-      result = Sup.callbacks()["sup_unlinked_processes"].()
+      result = SkillSupervisor.callbacks()["sup_unlinked_processes"].()
 
       assert is_list(result)
     end
 
     test "process entries have expected fields when unlinked processes exist" do
-      result = Sup.callbacks()["sup_unlinked_processes"].()
+      result = SkillSupervisor.callbacks()["sup_unlinked_processes"].()
 
       if result != [] do
         [proc | _] = result
@@ -154,13 +155,13 @@ defmodule Beamlens.Skill.SupTest do
 
   describe "sup_orphaned_processes callback" do
     test "returns a list" do
-      result = Sup.callbacks()["sup_orphaned_processes"].()
+      result = SkillSupervisor.callbacks()["sup_orphaned_processes"].()
 
       assert is_list(result)
     end
 
     test "process entries have expected fields when orphaned processes exist" do
-      result = Sup.callbacks()["sup_orphaned_processes"].()
+      result = SkillSupervisor.callbacks()["sup_orphaned_processes"].()
 
       if result != [] do
         [proc | _] = result
@@ -173,7 +174,7 @@ defmodule Beamlens.Skill.SupTest do
     end
 
     test "handles processes with nil ancestors gracefully" do
-      result = Sup.callbacks()["sup_orphaned_processes"].()
+      result = SkillSupervisor.callbacks()["sup_orphaned_processes"].()
 
       assert is_list(result)
 
@@ -189,48 +190,50 @@ defmodule Beamlens.Skill.SupTest do
 
   describe "sup_tree_integrity callback" do
     test "returns error for non-existent supervisor" do
-      result = Sup.callbacks()["sup_tree_integrity"].("nonexistent_supervisor_xyz")
+      result = SkillSupervisor.callbacks()["sup_tree_integrity"].("nonexistent_supervisor_xyz")
 
       assert result.error == "supervisor_not_found"
     end
 
-    test "returns integrity map for valid supervisor when supervisors exist" do
-      supervisors = Sup.callbacks()["sup_list"].()
+    test "returns integrity map for valid supervisor" do
+      supervisors = SkillSupervisor.callbacks()["sup_list"].()
 
-      if supervisors != [] do
-        sup_name = hd(supervisors).name
-        result = Sup.callbacks()["sup_tree_integrity"].(sup_name)
+      # BEAM always has supervisors running
+      assert supervisors != []
 
-        refute Map.has_key?(result, :error)
-        assert Map.has_key?(result, :supervisor_name)
-        assert Map.has_key?(result, :total_children)
-        assert Map.has_key?(result, :active_children)
-        assert Map.has_key?(result, :undefined_children)
-        assert Map.has_key?(result, :restarting_children)
-        assert Map.has_key?(result, :anomalies)
-        assert is_list(result.anomalies)
-      end
+      sup_name = hd(supervisors).name
+      result = SkillSupervisor.callbacks()["sup_tree_integrity"].(sup_name)
+
+      refute Map.has_key?(result, :error)
+      assert Map.has_key?(result, :supervisor_name)
+      assert Map.has_key?(result, :total_children)
+      assert Map.has_key?(result, :active_children)
+      assert Map.has_key?(result, :undefined_children)
+      assert Map.has_key?(result, :restarting_children)
+      assert Map.has_key?(result, :anomalies)
+      assert is_list(result.anomalies)
     end
   end
 
   describe "sup_zombie_children callback" do
     test "returns error for non-existent supervisor" do
-      result = Sup.callbacks()["sup_zombie_children"].("nonexistent_supervisor_xyz")
+      result = SkillSupervisor.callbacks()["sup_zombie_children"].("nonexistent_supervisor_xyz")
 
       assert result.error == "supervisor_not_found"
     end
 
-    test "returns zombie children map for valid supervisor when supervisors exist" do
-      supervisors = Sup.callbacks()["sup_list"].()
+    test "returns zombie children map for valid supervisor" do
+      supervisors = SkillSupervisor.callbacks()["sup_list"].()
 
-      if supervisors != [] do
-        sup_name = hd(supervisors).name
-        result = Sup.callbacks()["sup_zombie_children"].(sup_name)
+      # BEAM always has supervisors running
+      assert supervisors != []
 
-        refute Map.has_key?(result, :error)
-        assert Map.has_key?(result, :supervisor_name)
-        assert Map.has_key?(result, :status)
-      end
+      sup_name = hd(supervisors).name
+      result = SkillSupervisor.callbacks()["sup_zombie_children"].(sup_name)
+
+      refute Map.has_key?(result, :error)
+      assert Map.has_key?(result, :supervisor_name)
+      assert Map.has_key?(result, :status)
     end
   end
 end

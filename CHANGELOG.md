@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Port saturation prediction with risk level assessment (critical/high/medium/low)
 - Automatic Coordinator triggering on anomaly escalation (opt-in via `auto_trigger: true`)
 - Rate limiting for auto-triggers with configurable `max_triggers_per_hour` (default: 3)
-- Statistical anomaly detection Monitor skill with self-learning baselines
+- Statistical anomaly detection Anomaly skill with self-learning baselines
 - Z-score analysis for detecting metric deviations (3+ standard deviations)
 - Three-phase state machine: learning → active → cooldown
 - Configurable thresholds: z_threshold, consecutive_required, cooldown_ms
@@ -32,7 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bottleneck detection identifying downstream blocking, CPU-bound, or contention issues
 - Cascading failure detection across multiple subsystems
 - Remediation recommendations based on overload type and bottleneck location
-- Process relationship monitoring in Sup skill: `sup_unlinked_processes`, `sup_orphaned_processes`, `sup_tree_integrity`, `sup_zombie_children`
+- Process relationship monitoring in Supervisor skill: `sup_unlinked_processes`, `sup_orphaned_processes`, `sup_tree_integrity`, `sup_zombie_children`
 - Unlinked process detection for finding processes with no links or monitors (potential leaks)
 - Orphaned process detection for finding processes whose parent/ancestor has died
 - Supervision tree integrity checking with anomaly detection (crash loops, high undefined ratios, large supervisors)
@@ -42,7 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Lazy GC process identification for memory hoarding detection
 - GC efficiency ratio calculation (reclaimed vs allocated)
 - Hibernation recommendations with estimated memory savings
-- Long GC event history from SystemMonitor integration
+- Long GC event history from VmEvents skill integration
 - Memory allocator monitoring in Allocator skill: `allocator_summary`, `allocator_by_type`, `allocator_fragmentation`, `allocator_problematic`
 - Allocator metrics: carrier utilization, block efficiency, fragmentation detection for long-running nodes
 - Inet port monitoring callbacks in Ports skill: `ports_list_inet`, `ports_top_by_buffer`, `ports_inet_stats`
@@ -51,17 +51,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tracer skill for production-safe function call tracing with message limits and auto-shutoff
 - Atom table growth monitoring callbacks in Beam skill: `beam_atom_growth_rate/1`, `beam_atom_leak_detected/0`
 - AtomStore GenServer for periodic atom count sampling
-- Busy port detection monitoring in SystemMonitor skill: `busy_port` and `busy_dist_port` event tracking
+- Busy port detection monitoring in VmEvents skill: `busy_port` and `busy_dist_port` event tracking
 - Ports skill callbacks: `ports_busy_events` and `ports_busy_dist_events` for querying busy port events
 - Process reduction profiling callbacks in Beam skill: `beam_top_reducers_window/2`, `beam_reduction_rate/2`, `beam_burst_detection/2`, `beam_hot_functions/2`
 - ETS table growth tracking callbacks in Ets skill (`ets_growth_stats`, `ets_leak_candidates`)
 - GrowthStore GenServer for periodic ETS table size sampling
-- SystemMonitor skill for tracking long_gc and long_schedule events
+- VmEvents skill for tracking long_gc and long_schedule events
 - Scheduler utilization (wall time) tracking callbacks in Beam skill (`beam_scheduler_utilization`, `beam_scheduler_capacity_available`, `beam_scheduler_health`)
 - Message queue overload detection callbacks in Beam skill: `beam_queue_processes/1`, `beam_queue_growth/2`, `beam_queue_stats/0`
 - Binary memory leak detection callbacks in Beam skill (`beam_binary_leak`, `beam_binary_top_memory`, `beam_binary_info`)
 - Binary memory tracking in Beam skill snapshot (`binary_memory_mb`)
 - Rate limiting for `beam_binary_leak` GC calls (once per minute)
+- `Beamlens.Supervisor.registered_skills/0` function to retrieve configured skill modules
 - Message queue overload detection: `beam_queue_processes/1`, `beam_queue_growth/2`, `beam_queue_stats/0`
 - Operators and Coordinator are now always-running supervised processes
 - New `Operator.run_async/3` for running analysis in the background with progress notifications
@@ -70,6 +71,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Breaking:** Renamed skills for clarity:
+  - `Beamlens.Skill.Monitor` → `Beamlens.Skill.Anomaly`
+  - `Beamlens.Skill.Sup` → `Beamlens.Skill.Supervisor`
+  - `Beamlens.Skill.System` → `Beamlens.Skill.Os`
+  - `Beamlens.Skill.SystemMonitor` → `Beamlens.Skill.VmEvents`
+- **Breaking:** Updated atom shortcuts: `:monitor` → `:anomaly`, `:sup` → `:supervisor`, `:system` → `:os`, `:system_monitor` → `:vm_events`
 - **Breaking:** Configuration option renamed from `:operators` to `:skills`
   ```elixir
   # Before

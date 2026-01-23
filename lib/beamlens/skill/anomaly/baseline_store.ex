@@ -1,4 +1,4 @@
-defmodule Beamlens.Skill.Monitor.BaselineStore do
+defmodule Beamlens.Skill.Anomaly.BaselineStore do
   @moduledoc """
   Stores and manages learned metric baselines using ETS cache.
 
@@ -10,9 +10,7 @@ defmodule Beamlens.Skill.Monitor.BaselineStore do
   """
 
   use GenServer
-  alias Beamlens.Skill.Monitor.Statistics
-
-  require Logger
+  alias Beamlens.Skill.Anomaly.Statistics
 
   @default_ets_table :beamlens_baselines
   @default_auto_save_interval_ms :timer.minutes(5)
@@ -166,7 +164,12 @@ defmodule Beamlens.Skill.Monitor.BaselineStore do
         %{state | dets_table: dets_table}
 
       {:error, reason} ->
-        Logger.warning("Failed to open DETS file #{dets_file_path}: #{inspect(reason)}")
+        :telemetry.execute(
+          [:beamlens, :anomaly, :baseline_store, :dets_open_failed],
+          %{system_time: System.system_time()},
+          %{file: dets_file_path, reason: reason}
+        )
+
         state
     end
   end
@@ -197,23 +200,57 @@ defmodule Beamlens.Skill.Monitor.BaselineStore do
   defp async_dets_insert(nil, _key, _value), do: :ok
 
   defp async_dets_insert(dets_table, key, value) do
-    Task.start(fn ->
-      case :dets.insert(dets_table, {key, value}) do
-        :ok -> :ok
-        {:error, reason} -> Logger.error("DETS insert failed: #{inspect(reason)}")
-      end
-    end)
+    case Process.whereis(Beamlens.TaskSupervisor) do
+      nil ->
+        :ok
+
+      _pid ->
+        Task.Supervisor.start_child(Beamlens.TaskSupervisor, fn ->
+          do_dets_insert(dets_table, key, value)
+        end)
+    end
+  end
+
+  defp do_dets_insert(dets_table, key, value) do
+    case :dets.insert(dets_table, {key, value}) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        :telemetry.execute(
+          [:beamlens, :anomaly, :baseline_store, :dets_insert_failed],
+          %{system_time: System.system_time()},
+          %{key: key, reason: reason}
+        )
+    end
   end
 
   defp async_dets_delete(nil, _key), do: :ok
 
   defp async_dets_delete(dets_table, key) do
-    Task.start(fn ->
-      case :dets.delete(dets_table, key) do
-        :ok -> :ok
-        {:error, reason} -> Logger.error("DETS delete failed: #{inspect(reason)}")
-      end
-    end)
+    case Process.whereis(Beamlens.TaskSupervisor) do
+      nil ->
+        :ok
+
+      _pid ->
+        Task.Supervisor.start_child(Beamlens.TaskSupervisor, fn ->
+          do_dets_delete(dets_table, key)
+        end)
+    end
+  end
+
+  defp do_dets_delete(dets_table, key) do
+    case :dets.delete(dets_table, key) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        :telemetry.execute(
+          [:beamlens, :anomaly, :baseline_store, :dets_delete_failed],
+          %{system_time: System.system_time()},
+          %{key: key, reason: reason}
+        )
+    end
   end
 
   defp calculate_baseline_from_samples(skill, metric, samples) do

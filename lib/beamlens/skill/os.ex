@@ -1,4 +1,4 @@
-defmodule Beamlens.Skill.System do
+defmodule Beamlens.Skill.Os do
   @moduledoc """
   OS-level system metrics skill.
 

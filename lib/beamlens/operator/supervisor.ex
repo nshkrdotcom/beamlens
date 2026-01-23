@@ -39,15 +39,15 @@ defmodule Beamlens.Operator.Supervisor do
   alias Beamlens.Operator
 
   @builtin_skill_modules [
+    Beamlens.Skill.Anomaly,
     Beamlens.Skill.Beam,
     Beamlens.Skill.Ets,
     Beamlens.Skill.Gc,
     Beamlens.Skill.Logger,
-    Beamlens.Skill.Monitor,
+    Beamlens.Skill.Os,
     Beamlens.Skill.Ports,
-    Beamlens.Skill.Sup,
-    Beamlens.Skill.System,
-    Beamlens.Skill.SystemMonitor
+    Beamlens.Skill.Supervisor,
+    Beamlens.Skill.VmEvents
   ]
 
   def start_link(opts \\ []) do
@@ -215,15 +215,16 @@ defmodule Beamlens.Operator.Supervisor do
     end
   end
 
+  defp normalize_skill(:anomaly), do: Beamlens.Skill.Anomaly
   defp normalize_skill(:beam), do: Beamlens.Skill.Beam
   defp normalize_skill(:ets), do: Beamlens.Skill.Ets
+  defp normalize_skill(:exception), do: Beamlens.Skill.Exception
   defp normalize_skill(:gc), do: Beamlens.Skill.Gc
   defp normalize_skill(:logger), do: Beamlens.Skill.Logger
+  defp normalize_skill(:os), do: Beamlens.Skill.Os
   defp normalize_skill(:ports), do: Beamlens.Skill.Ports
-  defp normalize_skill(:sup), do: Beamlens.Skill.Sup
-  defp normalize_skill(:system), do: Beamlens.Skill.System
-  defp normalize_skill(:system_monitor), do: Beamlens.Skill.SystemMonitor
-  defp normalize_skill(:exception), do: Beamlens.Skill.Exception
+  defp normalize_skill(:supervisor), do: Beamlens.Skill.Supervisor
+  defp normalize_skill(:vm_events), do: Beamlens.Skill.VmEvents
   defp normalize_skill(skill_module), do: skill_module
 
   defp via_registry(name) do

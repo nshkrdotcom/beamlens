@@ -402,12 +402,12 @@ Compaction events are emitted via telemetry: `[:beamlens, :compaction, :start]` 
 | `Beamlens.Skill.Ets` | ETS table monitoring |
 | `Beamlens.Skill.Gc` | Garbage collection statistics |
 | `Beamlens.Skill.Logger` | Application log monitoring |
-| `Beamlens.Skill.Monitor` | Statistical anomaly detection with auto-trigger |
+| `Beamlens.Skill.Anomaly` | Statistical anomaly detection with auto-trigger |
 | `Beamlens.Skill.Overload` | Message queue overload analysis and bottleneck detection |
 | `Beamlens.Skill.Ports` | Port monitoring (file descriptors, sockets) |
-| `Beamlens.Skill.Sup` | Supervisor tree monitoring |
-| `Beamlens.Skill.System` | OS-level metrics (CPU, memory, disk via os_mon) |
-| `Beamlens.Skill.SystemMonitor` | System event monitoring (long GC, large heap) |
+| `Beamlens.Skill.Supervisor` | Supervisor tree monitoring |
+| `Beamlens.Skill.Os` | OS-level metrics (CPU, memory, disk via os_mon) |
+| `Beamlens.Skill.VmEvents` | System event monitoring (long GC, large heap) |
 | `Beamlens.Skill.Tracer` | Process tracing for debugging |
 
 ### BEAM Skill (`Beamlens.Skill.Beam`)
@@ -506,7 +506,7 @@ Monitors BEAM ports (file descriptors, sockets).
 | `ports_info(port_id)` | Port details: I/O bytes, memory |
 | `ports_top(limit, sort_by)` | Top N ports by "input", "output", or "memory" |
 
-### Sup Skill (`Beamlens.Skill.Sup`)
+### Supervisor Skill (`Beamlens.Skill.Supervisor`)
 
 Monitors supervisor tree structure.
 
@@ -521,8 +521,12 @@ Monitors supervisor tree structure.
 | `sup_list()` | All supervisors: name, pid, child_count, active_children |
 | `sup_children(supervisor_name)` | Direct children: id, pid, type |
 | `sup_tree(supervisor_name)` | Full supervision tree (recursive, depth-limited) |
+| `sup_unlinked_processes()` | Processes with no links or monitors (potential leaks) |
+| `sup_orphaned_processes()` | Processes whose parent/ancestor has died |
+| `sup_tree_integrity(supervisor_name)` | Supervision tree health check with anomaly detection |
+| `sup_zombie_children(supervisor_name)` | Children of dead supervisors (indicates supervisor crash without cleanup) |
 
-### System Skill (`Beamlens.Skill.System`)
+### Os Skill (`Beamlens.Skill.Os`)
 
 Monitors OS-level system health via Erlang's os_mon application.
 
@@ -542,18 +546,18 @@ Monitors OS-level system health via Erlang's os_mon application.
 | `system_get_memory()` | System memory stats |
 | `system_get_disks()` | Disk usage per mount point |
 
-### Monitor Skill (`Beamlens.Skill.Monitor`)
+### Anomaly Skill (`Beamlens.Skill.Anomaly`)
 
 Statistical anomaly detection with automatic triggering based on learned baselines.
 
-> **Opt-in:** The Monitor skill requires explicit `enabled: true` configuration and starts a separate supervisor with detector, metric store, and baseline store processes.
+> **Opt-in:** The Anomaly skill requires explicit `enabled: true` configuration and starts a separate supervisor with detector, metric store, and baseline store processes.
 
 **Configuration:**
 
 ```elixir
 {Beamlens, [
   skills: [
-    {Beamlens.Skill.Monitor, [
+    {Beamlens.Skill.Anomaly, [
       enabled: true,
       collection_interval_ms: 60_000,
       learning_duration_ms: 300_000,
@@ -575,9 +579,8 @@ Statistical anomaly detection with automatic triggering based on learned baselin
 
 | Callback | Description |
 |----------|-------------|
-| `monitor_get_state()` | Current detector state and configuration |
-| `monitor_get_baseline(skill, metric)` | Statistical baseline for specific metric |
-| `monitor_get_anomalies()` | Current detected anomalies |
+| `monitor_get_state()` | Current detector state (:learning, :active, or :cooldown) |
+| `monitor_get_status()` | Detailed status including learning progress, consecutive anomaly count, and configuration |
 
 ### Overload Skill (`Beamlens.Skill.Overload`)
 
@@ -599,23 +602,26 @@ Message queue overload detection, bottleneck analysis, and cascade detection.
 | `overload_detect_cascades()` | Detect cascading queue failures |
 | `overload_predict_growth()` | Predict queue saturation times |
 
-### SystemMonitor Skill (`Beamlens.Skill.SystemMonitor`)
+### VmEvents Skill (`Beamlens.Skill.VmEvents`)
 
 Monitors OS-level system events via Erlang's :system_monitor.
 
 **Snapshot Metrics:**
-- Long GC count
-- Large heap count
-- Busy port count
+- Long GC events (5m)
+- Long schedule events (5m)
+- Busy port events (5m)
+- Busy dist port events (5m)
+- Max GC duration (ms)
+- Max schedule duration (ms)
+- Affected process count
+- Affected port count
 
 **Lua Callbacks:**
 
 | Callback | Description |
 |----------|-------------|
-| `system_monitor_get_events()` | Recent system monitor events |
-| `system_monitor_get_long_gc()` | Long garbage collection events |
-| `system_monitor_get_large_heap()` | Large heap allocation events |
-| `system_monitor_get_busy_ports()` | Busy port events |
+| `sysmon_stats()` | Event counts and max durations |
+| `sysmon_events(type, limit)` | Recent events, optionally filtered by type |
 
 ### Tracer Skill (`Beamlens.Skill.Tracer`)
 

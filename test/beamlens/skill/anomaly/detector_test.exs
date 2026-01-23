@@ -1,9 +1,9 @@
-defmodule Beamlens.Skill.Monitor.DetectorTest do
+defmodule Beamlens.Skill.Anomaly.DetectorTest do
   use ExUnit.Case, async: false
 
-  alias Beamlens.Skill.Monitor.BaselineStore
-  alias Beamlens.Skill.Monitor.Detector
-  alias Beamlens.Skill.Monitor.MetricStore
+  alias Beamlens.Skill.Anomaly.BaselineStore
+  alias Beamlens.Skill.Anomaly.Detector
+  alias Beamlens.Skill.Anomaly.MetricStore
 
   @skill_beam Beamlens.Skill.Beam
 
@@ -659,8 +659,6 @@ defmodule Beamlens.Skill.Monitor.DetectorTest do
   end
 
   describe "auto-trigger" do
-    import ExUnit.CaptureLog
-
     setup do
       start_supervised!(
         {MetricStore,
@@ -769,7 +767,19 @@ defmodule Beamlens.Skill.Monitor.DetectorTest do
       assert state.auto_trigger == true
     end
 
-    test "logs warning when rate-limited" do
+    test "emits telemetry when rate-limited" do
+      test_pid = self()
+      handler_id = "test-rate-limited-#{System.unique_integer()}"
+
+      :telemetry.attach(
+        handler_id,
+        [:beamlens, :anomaly, :detector, :trigger_rate_limited],
+        fn _event, measurements, metadata, _config ->
+          send(test_pid, {:telemetry_event, measurements, metadata})
+        end,
+        nil
+      )
+
       pid =
         start_supervised!(
           {Detector,
@@ -805,13 +815,14 @@ defmodule Beamlens.Skill.Monitor.DetectorTest do
       send(pid, :collect)
       _ = :sys.get_state(pid)
 
-      log =
-        capture_log(fn ->
-          send(pid, :collect)
-          _ = :sys.get_state(pid)
-        end)
+      send(pid, :collect)
+      _ = :sys.get_state(pid)
 
-      assert log =~ "rate-limited"
+      assert_receive {:telemetry_event, measurements, metadata}, 1000
+      assert is_integer(measurements.triggers_in_last_hour)
+      assert metadata.max_triggers_per_hour == 2
+
+      :telemetry.detach(handler_id)
 
       state = :sys.get_state(pid)
       assert length(state.trigger_history) == 2
