@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Allocator** and **Overload** skills are now enabled by default (11 builtin skills total)
 - **Breaking:** Skills renamed for clarity:
   - `Beamlens.Skill.Monitor` → `Beamlens.Skill.Anomaly`
   - `Beamlens.Skill.Sup` → `Beamlens.Skill.Supervisor`
