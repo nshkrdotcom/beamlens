@@ -36,17 +36,27 @@ defmodule Beamlens.Supervisor do
 
   ## Anomaly Skill Configuration
 
-  The Anomaly skill is opt-in and requires explicit configuration with enabled: true.
-  Configuration is collocated with the skill in the skills list:
+  The Anomaly skill is enabled by default and starts automatically with builtin skills.
+  To customize its configuration, use collocated options:
 
       children = [
         {Beamlens,
          skills: [
            Beamlens.Skill.Beam,
            {Beamlens.Skill.Anomaly, [
-             enabled: true,
-             collection_interval_ms: :timer.seconds(30)
+             collection_interval_ms: :timer.seconds(30),
+             learning_duration_ms: :timer.hours(2)
            ]}
+         ]}
+      ]
+
+  To disable the Anomaly skill explicitly:
+
+      children = [
+        {Beamlens,
+         skills: [
+           Beamlens.Skill.Beam,
+           {Beamlens.Skill.Anomaly, enabled: false}
          ]}
       ]
 
@@ -160,7 +170,7 @@ defmodule Beamlens.Supervisor do
   defp monitor_child(skills, skill_configs) do
     if Beamlens.Skill.Anomaly in skills do
       monitor_opts = Map.get(skill_configs, Beamlens.Skill.Anomaly, [])
-      enabled = Keyword.get(monitor_opts, :enabled, false)
+      enabled = Keyword.get(monitor_opts, :enabled, true)
 
       if enabled do
         [{Beamlens.Skill.Anomaly.Supervisor, monitor_opts}]

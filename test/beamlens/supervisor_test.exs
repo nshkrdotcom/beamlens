@@ -136,4 +136,42 @@ defmodule Beamlens.SupervisorTest do
       assert status.state == :learning
     end
   end
+
+  describe "anomaly skill defaults" do
+    test "anomaly infrastructure starts by default with builtin skills" do
+      {:ok, _} = start_supervised({Beamlens.Supervisor, []})
+
+      detector_result = Registry.lookup(Beamlens.OperatorRegistry, "monitor_detector")
+
+      assert [{detector_pid, _}] = detector_result
+      assert Process.alive?(detector_pid)
+
+      status = Detector.get_status(detector_pid)
+      assert status.state == :learning
+    end
+
+    test "detector excludes itself from monitored skills" do
+      {:ok, _} = start_supervised({Beamlens.Supervisor, []})
+
+      [{detector_pid, _}] = Registry.lookup(Beamlens.OperatorRegistry, "monitor_detector")
+      state = :sys.get_state(detector_pid)
+
+      refute Beamlens.Skill.Anomaly in state.skills
+    end
+
+    test "detector can be disabled explicitly" do
+      {:ok, _} =
+        start_supervised(
+          {Beamlens,
+           skills: [
+             Beamlens.Skill.Beam,
+             {Beamlens.Skill.Anomaly, enabled: false}
+           ]}
+        )
+
+      detector_result = Registry.lookup(Beamlens.OperatorRegistry, "monitor_detector")
+
+      assert detector_result == []
+    end
+  end
 end
