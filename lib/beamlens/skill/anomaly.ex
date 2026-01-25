@@ -10,7 +10,6 @@ defmodule Beamlens.Skill.Anomaly do
 
   All metrics are collected from existing skill snapshots (read-only).
   Detection runs in a separate GenServer with configurable intervals.
-  Opt-in feature - disabled by default.
 
   ## Configuration
 
@@ -18,13 +17,14 @@ defmodule Beamlens.Skill.Anomaly do
 
       {Beamlens.Skill.Anomaly.Supervisor,
        [
-         enabled: true,
          collection_interval_ms: :timer.seconds(30),
          learning_duration_ms: :timer.hours(2),
          z_threshold: 3.0,
          consecutive_required: 3,
          cooldown_ms: :timer.minutes(15),
-         history_minutes: 60
+         history_minutes: 60,
+         auto_trigger: true,        # triggers Coordinator on anomalies (default)
+         max_triggers_per_hour: 3   # rate limit (default)
        ]}
 
   ## State Machine

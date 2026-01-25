@@ -554,9 +554,7 @@ Monitors OS-level system health via Erlang's os_mon application.
 
 ### Anomaly Skill (`Beamlens.Skill.Anomaly`)
 
-Statistical anomaly detection with automatic triggering based on learned baselines.
-
-> **Opt-in:** The Anomaly skill requires explicit `enabled: true` configuration and starts a separate supervisor with detector, metric store, and baseline store processes.
+Statistical anomaly detection with automatic Coordinator triggering based on learned baselines.
 
 **Configuration:**
 
@@ -564,12 +562,13 @@ Statistical anomaly detection with automatic triggering based on learned baselin
 {Beamlens, [
   skills: [
     {Beamlens.Skill.Anomaly, [
-      enabled: true,
       collection_interval_ms: 60_000,
       learning_duration_ms: 300_000,
       z_threshold: 3.0,
       consecutive_required: 3,
-      cooldown_duration_ms: 900_000
+      cooldown_duration_ms: 900_000,
+      auto_trigger: true,         # default: true
+      max_triggers_per_hour: 3    # default: 3
     ]}
   ]
 ]}

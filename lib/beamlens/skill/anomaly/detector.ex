@@ -20,7 +20,7 @@ defmodule Beamlens.Skill.Anomaly.Detector do
   @default_z_threshold 3.0
   @default_consecutive_required 3
   @default_cooldown_ms :timer.minutes(15)
-  @default_auto_trigger false
+  @default_auto_trigger true
   @default_max_triggers_per_hour 3
   @one_hour_ms :timer.hours(1)
 
@@ -56,7 +56,7 @@ defmodule Beamlens.Skill.Anomaly.Detector do
     * `:consecutive_required` - Consecutive anomalies before escalation (default: 3)
     * `:cooldown_ms` - Cooldown period after escalation (default: 15 minutes)
     * `:skills` - List of skill modules to monitor (default: all registered skills)
-    * `:auto_trigger` - Enable automatic Coordinator triggering (default: false)
+    * `:auto_trigger` - Enable automatic Coordinator triggering (default: true)
     * `:max_triggers_per_hour` - Rate limit for auto-triggers (default: 3)
   """
   def start_link(opts \\ []) do

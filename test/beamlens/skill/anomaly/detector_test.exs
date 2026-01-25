@@ -146,7 +146,7 @@ defmodule Beamlens.Skill.Anomaly.DetectorTest do
       assert status.learning_elapsed_ms >= 0
       assert status.collection_interval_ms == 100
       assert status.consecutive_count == 0
-      assert status.auto_trigger == false
+      assert status.auto_trigger == true
       assert status.triggers_in_last_hour == 0
     end
   end
@@ -697,7 +697,7 @@ defmodule Beamlens.Skill.Anomaly.DetectorTest do
       :ok
     end
 
-    test "does not trigger when auto_trigger is false (default)" do
+    test "does not trigger when auto_trigger is false" do
       pid =
         start_supervised!(
           {Detector,
@@ -710,6 +710,7 @@ defmodule Beamlens.Skill.Anomaly.DetectorTest do
              z_threshold: 2.0,
              consecutive_required: 2,
              cooldown_ms: 200,
+             auto_trigger: false,
              skills: [TestSkillAutoTrigger]
            ]},
           id: :detector_auto_off

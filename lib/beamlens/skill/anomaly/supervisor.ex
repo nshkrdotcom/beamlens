@@ -26,7 +26,7 @@ defmodule Beamlens.Skill.Anomaly.Supervisor do
   @default_consecutive_required 3
   @default_cooldown_ms :timer.minutes(15)
   @default_history_minutes 60
-  @default_auto_trigger false
+  @default_auto_trigger true
   @default_max_triggers_per_hour 3
 
   def start_link(opts) do

@@ -11,7 +11,7 @@ defmodule Beamlens.Supervisor do
     * `Beamlens.Skill.VmEvents.EventStore` - System monitor event buffer (only if VmEvents skill is enabled)
     * `Beamlens.Skill.Ets.GrowthStore` - ETS growth tracking buffer (only if Ets skill is enabled)
     * `Beamlens.Skill.Beam.AtomStore` - Atom growth tracking buffer (only if Beam skill is enabled)
-    * `Beamlens.Skill.Anomaly.Supervisor` - Statistical anomaly detection (only if Anomaly skill is enabled and configured with enabled: true)
+    * `Beamlens.Skill.Anomaly.Supervisor` - Statistical anomaly detection (only if Anomaly skill is enabled)
     * `Beamlens.Coordinator` - Static coordinator process
     * `Beamlens.Operator.Supervisor` - Supervisor for static operator processes
 
@@ -24,7 +24,6 @@ defmodule Beamlens.Supervisor do
          skills: [
            Beamlens.Skill.Beam,
            {Beamlens.Skill.Anomaly, [
-             enabled: true,
              collection_interval_ms: :timer.seconds(30),
              learning_duration_ms: :timer.hours(2),
              z_threshold: 3.0,

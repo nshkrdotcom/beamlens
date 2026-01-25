@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### New Skills
 
-- **Anomaly** — Statistical anomaly detection with self-learning baselines. Optionally auto-triggers Coordinator when anomalies escalate (`auto_trigger: true`).
+- **Anomaly** — Statistical anomaly detection with self-learning baselines. Auto-triggers Coordinator when anomalies escalate.
 - **Overload** — Message queue overload analysis with bottleneck detection and remediation recommendations.
 - **Allocator** — Memory allocator fragmentation monitoring for long-running nodes.
 - **Tracer** — Production-safe function call tracing powered by Recon. Rate-limited with auto-shutoff. Requires `recon` dependency.
@@ -33,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Allocator** and **Overload** skills are now enabled by default (11 builtin skills total)
+- **Allocator**, **Overload**, and **Tracer** skills are now enabled by default (12 builtin skills total)
 - **Breaking:** Skills renamed for clarity:
   - `Beamlens.Skill.Monitor` → `Beamlens.Skill.Anomaly`
   - `Beamlens.Skill.Sup` → `Beamlens.Skill.Supervisor`

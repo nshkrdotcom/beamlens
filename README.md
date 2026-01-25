@@ -72,7 +72,7 @@ You can also configure which skills to enable:
 ```elixir
 {Beamlens, skills: [
   Beamlens.Skill.Beam,
-  {Beamlens.Skill.Anomaly, [enabled: true, collection_interval_ms: 60_000]}
+  {Beamlens.Skill.Anomaly, [collection_interval_ms: 60_000]}
 ]}
 ```
 
