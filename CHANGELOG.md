@@ -29,7 +29,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Operators and Coordinator are now always-running supervised processes
 - `Operator.run_async/3` for background analysis with progress notifications
-- Google AI (Gemini) provider support
 
 ### Changed
 
@@ -58,7 +57,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Anomaly detector no longer crashes when skill snapshot exits unexpectedly
 - Exception skill snapshot data now serializes correctly to JSON
 
 ## [0.2.0] - 2026-01-14
