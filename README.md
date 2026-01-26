@@ -1,44 +1,53 @@
-**Note** This project is in early development but we are actively seeking feedback from early adopters.
+**Early Development** — Ready for experimentation. Start with staging or low-risk services. We welcome feedback from early adopters.
 
 # Beamlens
 
 Adaptive runtime intelligence for the BEAM.
- 
+
+[![Hex.pm](https://img.shields.io/hexpm/v/beamlens.svg)](https://hex.pm/packages/beamlens)
+[![Hex Docs](https://img.shields.io/badge/hex-docs-purple.svg)](https://hexdocs.pm/beamlens)
+[![License](https://img.shields.io/hexpm/l/beamlens.svg)](LICENSE)
+
 Move beyond static supervision. Give your application the capability to self-diagnose incidents, analyze traffic patterns, and optimize its own performance.
 
 <a href="https://screen.studio/share/w1qXNbUc" target="_blank"><img src="assets/demo.gif" alt="Demo" /></a>
 
-**[Request free early access to the web dashboard here](https://forms.gle/1KDwTLTC1UNwhGbh7)**. The web dashboard will be **free**, I just want to get early feedback first before releasing to everyone.
+## Why Beamlens?
+
+**Static rules miss context.** Threshold alerts fire on symptoms, not causes. When memory spikes, you get an alert—but you still need to figure out whether it's a memory leak, ETS bloat, or a stuck process. Beamlens investigates the *why*.
+
+**External monitors miss internals.** APM tools see requests and traces, but they can't peer into ETS distributions, scheduler utilization, or allocator fragmentation. Beamlens captures the runtime state that external tools miss.
+
+**Manual debugging is reactive.** By the time you SSH in and attach a remote shell, the incident may have passed. Beamlens investigates while it happens, capturing the state you need for diagnosis.
+
+## Supported Providers
+
+Beamlens works with any LLM provider. Anthropic is the default. See the [providers guide](docs/providers.md) for configuration details.
+
+| Provider |
+|----------|
+| Anthropic |
+| OpenAI |
+| Google AI (Gemini) |
+| Google Vertex AI |
+| AWS Bedrock |
+| Azure OpenAI |
+| Ollama (Local) |
+| OpenRouter |
+| OpenAI Compatible APIs |
 
 ## How It Works
 
-Beamlens lives inside your supervision tree. It captures runtime state that external monitors miss—ETS distributions, process heaps, scheduler utilization—and uses an LLM to explain *why* your metrics look the way they do.
+Beamlens lives inside your supervision tree. It captures runtime state and uses an LLM to explain *why* your metrics look the way they do.
 
-- **Read-only**: All analysis is sandboxed. No side effects.
-- **Privacy-first**: Data stays in your infrastructure. You choose the LLM provider.
-- **Extensible**: Teach it your domain with custom skills.
-- **Auto or on-demand**: Trigger analysis manually, or let the Anomaly skill auto-trigger when it detects statistical anomalies.
-
-## Example
-
-Beamlens translates opaque runtime metrics into semantic explanations.
-
-```elixir
-# Trigger manually from an alert, or let Anomaly skill auto-trigger
-{:ok, result} = Beamlens.Coordinator.run(%{reason: "memory > 90%"})
-
-# beamlens returns the specific root cause based on runtime introspection
-result.insights
-# => [
-#      "Analysis: Process <0.450.0> (MyApp.ImageWorker) is holding 2.1GB binary heap.",
-#      "Context: Correlates with 450 concurrent uploads in the last minute.",
-#      "Root Cause: Worker pool exhausted; processes are not hibernating after large binary handling."
-#    ]
+```
+Alert → Coordinator → Operators (Skills) → LLM → Insights
 ```
 
-## Roadmap
-
-See the [project roadmap](https://github.com/orgs/beamlens/projects/1) for planned features including a web dashboard, Phoenix integration, and continuous monitoring.
+- **Production-safe**: All analysis is read-only. No side effects.
+- **Privacy-first**: Data stays in your infrastructure. You choose the LLM provider.
+- **Extensible**: 12 built-in skills + custom skills for your domain.
+- **Auto or on-demand**: Trigger manually, on schedule, or let the Anomaly skill auto-trigger on statistical anomalies.
 
 ## Installation
 
@@ -100,103 +109,6 @@ Or configure a custom [provider](docs/providers.md) in your supervision tree:
 {:ok, result} = Beamlens.Coordinator.run(%{reason: "memory alert..."})
 ```
 
-## Testing
-
-Use `Puck.Test.mock_client/2` for deterministic tests without API keys. See `Puck.Test` module docs for details.
-
-## Examples
-
-**1. Triggering from Telemetry**
-
-```elixir
-# In your Telemetry handler
-def handle_event([:my_app, :memory, :high], _measurements, _metadata, _config) do
-  # Trigger an investigation immediately
-  {:ok, result} = Beamlens.Coordinator.run(%{reason: "memory alert..."})
-
-  # Log the insights
-  Logger.error("Memory Alert Diagnosis: #{inspect(result.insights)}")
-end
-```
-
-**2. Creating Custom Skills**
-
-You can teach Beamlens to understand your specific business logic. For example, if you use a GenServer to batch requests, generic metrics won't help. You need a custom skill.
-
-```elixir
-defmodule MyApp.Skills.Batcher do
-  @behaviour Beamlens.Skill
-  
-  # Shortened for brevity, see the Beamlens.Skill behaviour for full implementation details.
-
-  @impl true
-  def system_prompt do
-    "You are checking the Batcher process. Watch for 'queue_size' > 5000."
-  end
-
-  @impl true
-  def snapshot do
-    %{
-      queue_size: MyApp.Batcher.queue_size(),
-      pending_jobs: MyApp.Batcher.pending_count()
-    }
-  end
-end
-```
-
-**3. Periodic Health Checks (Optimization)**
-
-You can schedule Beamlens to run periodically to spot trends before they become alerts.
-
-```elixir
-# In a scheduled job (e.g., Oban)
-def perform(_job) do
-  {:ok, result} = Beamlens.Coordinator.run(%{reason: "daily check..."})
-  # Store insights for review
-  MyApp.InsightStore.save(result)
-end
-```
-
-**4. Fire-and-Forget Analysis**
-
-Use `run_async/3` for background analysis with callbacks:
-
-```elixir
-# Look up the operator for a skill
-[{pid, _}] = Registry.lookup(Beamlens.OperatorRegistry, Beamlens.Skill.Beam)
-
-# Run asynchronously - returns immediately
-Beamlens.Operator.run_async(pid, %{reason: "background check"}, notify_pid: self())
-
-# Receive results when ready
-receive do
-  {:operator_complete, _pid, skill, result} ->
-    Logger.info("#{skill} completed: #{inspect(result.insights)}")
-end
-```
-
-**5. Custom Actions (Advanced)**
-
-Skills can expose callbacks that the LLM can invoke. This allows Beamlens to take actions beyond read-only analysis—use with care.
-
-```elixir
-defmodule MyApp.Skills.PoolManager do
-  @behaviour Beamlens.Skill
-
-  # ... other callbacks (system_prompt, snapshot, etc.)
-
-  @impl Beamlens.Skill
-  def callbacks do
-    %{
-      # The LLM can request to resize a pool based on its analysis
-      "resize_pool" => fn size_str ->
-        MyApp.WorkerPool.resize(String.to_integer(size_str))
-      end
-    }
-  end
-end
-```
-
 ## Built-in Skills
 
 Beamlens includes skills for common BEAM runtime monitoring:
@@ -218,6 +130,48 @@ Beamlens includes skills for common BEAM runtime monitoring:
 | `Beamlens.Skill.Ecto` | Database monitoring (requires `ecto_psql_extras`) | |
 | `Beamlens.Skill.Exception` | Exception tracking (requires `tower`) | |
 
+## Examples
+
+**Triggering from Telemetry**
+
+```elixir
+# In your Telemetry handler
+def handle_event([:my_app, :memory, :high], _measurements, _metadata, _config) do
+  # Trigger an investigation immediately
+  {:ok, result} = Beamlens.Coordinator.run(%{reason: "memory alert..."})
+
+  # Log the insights
+  Logger.error("Memory Alert Diagnosis: #{inspect(result.insights)}")
+end
+```
+
+**Creating Custom Skills**
+
+Teach Beamlens to understand your specific business logic. For example, if you use a GenServer to batch requests, generic metrics won't help—you need a custom skill.
+
+```elixir
+defmodule MyApp.Skills.Batcher do
+  @behaviour Beamlens.Skill
+
+  # Shortened for brevity, see the Beamlens.Skill behaviour for full implementation details.
+
+  @impl true
+  def system_prompt do
+    "You are checking the Batcher process. Watch for 'queue_size' > 5000."
+  end
+
+  @impl true
+  def snapshot do
+    %{
+      queue_size: MyApp.Batcher.queue_size(),
+      pending_jobs: MyApp.Batcher.pending_count()
+    }
+  end
+end
+```
+
+See the [Beamlens.Skill behaviour](https://hexdocs.pm/beamlens/Beamlens.Skill.html) for full custom skill documentation including callbacks.
+
 ## FAQ
 
 <details>
@@ -229,13 +183,19 @@ Beamlens is read-only and designed to run alongside your app. This is still earl
 <details>
 <summary>How much does it cost to run?</summary>
 
-You control the costs. Choose which model to use and which skills to enable. Auto-trigger is rate-limited (default: 3 per hour) to prevent runaway costs.
+You control the costs:
+
+- **Typical investigation**: ~10K tokens ($0.01-0.03 with Haiku)
+- **Hourly monitoring with all skills**: ~$1-3/day with Haiku
+- **Controls**: model choice, skill selection, trigger frequency, rate limits
+
+Auto-trigger is rate-limited (default: 3 per hour) to prevent runaway costs. Choose a smaller model like Haiku for routine monitoring.
 </details>
 
 <details>
 <summary>Which model do you recommend?</summary>
 
-Haiku-level intelligence or higher. Haiku is a solid baseline and runs well.
+Haiku-level intelligence or higher. Haiku is a solid baseline for routine monitoring and runs well. Use a larger model for complex investigations.
 </details>
 
 <details>
@@ -244,17 +204,12 @@ Haiku-level intelligence or higher. Haiku is a solid baseline and runs well.
 No. You bring your own provider and keys. Your data stays in your infrastructure and the provider you configure.
 </details>
 
-<details>
-<summary>How do I get dashboard early access?</summary>
+## Get Involved
 
-Join the [early access list](https://forms.gle/1KDwTLTC1UNwhGbh7) and we will follow up with next steps.
-</details>
-
-<details>
-<summary>Can we collaborate or partner?</summary>
-
-Yes. We are looking for early partners. Email bradley@recursivesystem.dev.
-</details>
+- **[Early Access](https://forms.gle/1KDwTLTC1UNwhGbh7)** — Join the waitlist for the free web dashboard
+- **[Roadmap](https://github.com/orgs/beamlens/projects/1)** — See planned features including Phoenix integration and continuous monitoring
+- **[GitHub Issues](https://github.com/beamlens/beamlens/issues)** — Report bugs or request features
+- **[Partner with us](mailto:bradley@recursivesystem.dev)** — We're looking for early partners
 
 ## License
 
