@@ -71,7 +71,7 @@ Add to `mix.exs`:
 ```elixir
 def deps do
   [
-    {:beamlens, "~> 0.2"}
+    {:beamlens, "~> 0.3"}
   ]
 end
 ```

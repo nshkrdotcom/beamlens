@@ -30,7 +30,7 @@ defmodule Beamlens do
 
   Add to your dependencies:
 
-      {:beamlens, "~> 0.2.0"}
+      {:beamlens, "~> 0.3.0"}
 
   ## Supervision Tree Setup
 
