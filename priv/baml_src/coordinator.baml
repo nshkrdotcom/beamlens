@@ -32,8 +32,10 @@ class CoordinatorProduceInsight {
   intent "produce_insight"
   notification_ids string[] @description("IDs of notifications this insight correlates")
   correlation_type "temporal" | "causal" | "symptomatic" @description("How notifications are related")
-  summary string @description("Brief explanation of the correlation")
-  root_cause_hypothesis string? @description("Possible root cause if identified")
+  summary string @description("Brief explanation based on OBSERVATIONS ONLY - no speculation")
+  matched_observations string[] @description("Specific observations from notifications that correlated (copy exact text)")
+  hypothesis_grounded bool @description("True ONLY if hypotheses were corroborated by multiple independent operators")
+  root_cause_hypothesis string? @description("Only provide if grounded=true OR derived purely from observations")
   confidence "high" | "medium" | "low" @description("Confidence in this correlation")
 }
 
@@ -102,11 +104,25 @@ Update status on multiple notifications.
 - acknowledged: You're currently analyzing these
 - resolved: Done processing (use for unrelated/false positives without insight)
 
-### produce_insight(notification_ids, correlation_type, summary, root_cause_hypothesis?, confidence)
+### produce_insight(notification_ids, correlation_type, summary, matched_observations, hypothesis_grounded, root_cause_hypothesis?, confidence)
 Create insight correlating notifications. Auto-resolves the referenced notifications.
 - temporal: Notifications occurred close in time, possibly related
 - causal: One notification directly caused another (A -> B)
 - symptomatic: Notifications share a common hidden cause (A <- X -> B)
+
+## Correlation Rules (CRITICAL - Fact vs Speculation)
+
+Notifications have decomposed fields: context (facts), observation (facts), hypothesis (speculation).
+
+1. **Correlate on FACTS ONLY** - Match on context + observation fields, NEVER on hypothesis
+2. **Evaluate hypotheses AFTER** finding observation correlations
+3. **A hypothesis is GROUNDED only when:**
+   - Same hypothesis appears from multiple INDEPENDENT operators, OR
+   - Factual observations from other operators directly support it
+4. **Set hypothesis_grounded: false** if speculation is not corroborated
+5. **matched_observations** must contain exact observation text that correlated
+6. **summary** must describe correlation based on observations only - no speculation
+7. **root_cause_hypothesis** should only be provided if grounded=true OR derived from observations
 
 ### invoke_operators(skills, context?)
 Start multiple operators in parallel. They run independently and send notifications
@@ -283,4 +299,64 @@ test CoordinatorRun_CallsDoneAfterAnalysis {
     available_skills "Beamlens.Skill.Beam"
   }
   @@assert(calls_done, {{ this.intent == "done" }})
+}
+
+// ============================================================================
+// INTENT DECOMPOSITION TESTS (Grounded Insights)
+// ============================================================================
+
+test CoordinatorRun_ProducesInsightWithMatchedObservations {
+  functions [CoordinatorRun]
+  args {
+    messages [
+      { role "user", content "Process notifications" },
+      { role "assistant", content #"{"intent":"get_notifications","status":"unread"}"# },
+      { role "user", content #"[{"id":"n1","status":"unread","operator":"Beamlens.Skill.Beam","context":"Node running for 3 days","observation":"Memory at 85%","hypothesis":"ETS table growth","severity":"warning"}]"# },
+      { role "assistant", content #"{"intent":"update_notification_statuses","notification_ids":["n1"],"status":"acknowledged"}"# },
+      { role "user", content #"{"updated":["n1"]}"# },
+      { role "user", content "Produce an insight for this acknowledged notification. Use produce_insight with matched_observations containing the observation text." }
+    ]
+    operator_descriptions "- Beamlens.Skill.Beam: BEAM VM health"
+    available_skills "Beamlens.Skill.Beam"
+  }
+  @@assert(produces_insight_or_acknowledges, {{
+    this.intent == "produce_insight" or
+    this.intent == "update_notification_statuses"
+  }})
+}
+
+test CoordinatorRun_InsightHypothesisGroundedFalseForSingleSource {
+  functions [CoordinatorRun]
+  args {
+    messages [
+      { role "user", content "Process notifications" },
+      { role "assistant", content #"{"intent":"get_notifications"}"# },
+      { role "user", content #"[{"id":"n1","status":"acknowledged","operator":"Beamlens.Skill.Beam","context":"Node active","observation":"Memory at 85%","hypothesis":"ETS growth","severity":"warning"}]"# },
+      { role "user", content "Produce an insight for this single notification. Since there is only ONE operator source, hypothesis_grounded MUST be false." }
+    ]
+    operator_descriptions "- Beamlens.Skill.Beam: BEAM VM health"
+    available_skills "Beamlens.Skill.Beam"
+  }
+  @@assert(hypothesis_not_grounded, {{
+    this.intent == "produce_insight" and
+    this.hypothesis_grounded == false
+  }})
+}
+
+test CoordinatorRun_InsightHypothesisGroundedTrueForCorroboratedHypotheses {
+  functions [CoordinatorRun]
+  args {
+    messages [
+      { role "user", content "Process notifications" },
+      { role "assistant", content #"{"intent":"get_notifications"}"# },
+      { role "user", content #"[{"id":"n1","status":"acknowledged","operator":"Beamlens.Skill.Beam","context":"Node active","observation":"Memory at 85%","hypothesis":"ETS table growth","severity":"warning"},{"id":"n2","status":"acknowledged","operator":"Beamlens.Skill.Ets","context":"Node active","observation":"ETS tables using 500MB","hypothesis":"Unbounded table growth","severity":"warning"}]"# },
+      { role "user", content "These notifications from TWO INDEPENDENT operators (Beam and Ets) share a corroborated hypothesis about ETS growth. Produce an insight with hypothesis_grounded=true." }
+    ]
+    operator_descriptions "- Beamlens.Skill.Beam: BEAM VM health\n- Beamlens.Skill.Ets: ETS table monitoring"
+    available_skills "Beamlens.Skill.Beam, Beamlens.Skill.Ets"
+  }
+  @@assert(hypothesis_grounded, {{
+    this.intent == "produce_insight" and
+    this.hypothesis_grounded == true
+  }})
 }

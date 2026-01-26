@@ -30,7 +30,9 @@ class SetState {
 class SendNotification {
   intent "send_notification"
   type string @description("Type of notification (e.g., memory_elevated, scheduler_contention)")
-  summary string @description("Brief description of the issue")
+  context string @description("Factual system state: What is the current context? (e.g., 'Node running for 3 days, 500 processes active')")
+  observation string @description("Factual anomaly: What did you observe? (e.g., 'Memory at 85%, exceeding 60% threshold')")
+  hypothesis string? @description("Speculative cause: What MIGHT be happening? (e.g., 'Likely due to ETS table growth')")
   severity "info" | "warning" | "critical" @description("Notification severity")
   snapshot_ids string[] @description("IDs of snapshots to include with notification - required")
 }
@@ -84,12 +86,21 @@ template_string OperatorToolDocs(callback_docs: string) #"
 Update your state. Use this to reflect your current assessment.
 If everything is fine, set state to healthy with a brief reason.
 
-### send_notification(type, summary, severity, snapshot_ids)
-Create a notification when you detect an anomaly.
+### send_notification(type, context, observation, hypothesis?, severity, snapshot_ids)
+Create a notification when you detect an anomaly. Separate FACTS from SPECULATION.
+
 - type: Descriptive name like "memory_elevated", "scheduler_contention"
-- summary: Brief human-readable description
+- context: FACTUAL system state (e.g., "Node running for 3 days, 500 processes active")
+- observation: FACTUAL anomaly description (e.g., "Memory at 85%, exceeding 60% threshold")
+- hypothesis: SPECULATIVE cause - what MIGHT be happening (optional, use only if you have a theory)
 - severity: info/warning/critical based on impact
 - snapshot_ids: REQUIRED - IDs of snapshots that show the issue (from take_snapshot)
+
+## Decomposition Rules (CRITICAL)
+1. context + observation = FACTS ONLY - no speculation, no "likely", no "probably"
+2. hypothesis = SPECULATION ONLY - use words like "might", "possibly", "could be"
+3. If you're uncertain, put it in hypothesis, not observation
+4. The coordinator correlates on facts only; hypotheses are validated across operators
 
 IMPORTANT: You must include snapshot_ids referencing the snapshots that show
 the anomaly. Notifications without snapshots will fail.
@@ -325,4 +336,68 @@ Memory stats in MB: total_mb, processes_mb, system_mb, binary_mb, ets_mb, code_m
 "#
   }
   @@assert(calls_done, {{ this.intent == "done" }})
+}
+
+// ============================================================================
+// INTENT DECOMPOSITION TESTS (Fact vs Speculation)
+// ============================================================================
+
+test OperatorRun_DecomposedNotification_SeparatesFactFromSpeculation {
+  functions [OperatorRun]
+  args {
+    messages [
+      { role "user", content #"Current state: observing"# },
+      { role "assistant", content #"{"intent":"take_snapshot"}"# },
+      { role "tool", content #"{"id":"snap1","captured_at":"2024-01-06T10:30:00Z","data":{"memory_utilization_pct":85.0,"process_count":500}}"# }
+    ]
+    system_prompt "You are a BEAM VM health monitor. Memory > 80% requires sending a notification. You must send a notification now."
+    callback_docs #"
+### beam_get_memory()
+Returns memory stats in MB: total_mb, processes_mb, system_mb, binary_mb, ets_mb, code_mb
+"#
+  }
+  @@assert(has_context_and_observation, {{
+    this.intent == "send_notification" and
+    this.context is not none and
+    this.observation is not none
+  }})
+}
+
+test OperatorRun_DecomposedNotification_HypothesisIsOptional {
+  functions [OperatorRun]
+  args {
+    messages [
+      { role "user", content #"Current state: warning"# },
+      { role "assistant", content #"{"intent":"take_snapshot"}"# },
+      { role "tool", content #"{"id":"snap1","captured_at":"2024-01-06T10:30:00Z","data":{"memory_utilization_pct":90.0,"process_count":400}}"# }
+    ]
+    system_prompt "You are a BEAM VM health monitor. Memory > 80% requires sending a notification. You must send a notification now."
+    callback_docs #"
+### beam_get_memory()
+Returns memory stats in MB
+"#
+  }
+  @@assert(sends_notification, {{ this.intent == "send_notification" }})
+}
+
+test OperatorRun_DecomposedNotification_ContextIsFactual {
+  functions [OperatorRun]
+  args {
+    messages [
+      { role "user", content #"Current state: observing"# },
+      { role "assistant", content #"{"intent":"take_snapshot"}"# },
+      { role "tool", content #"{"id":"snap1","captured_at":"2024-01-06T10:30:00Z","data":{"memory_utilization_pct":85.0,"uptime_seconds":259200}}"# }
+    ]
+    system_prompt "You are a BEAM VM health monitor. Memory > 80% requires a notification. Context field must be factual only - no speculation words like 'likely' or 'probably'. Send a notification now."
+    callback_docs #"
+### beam_get_memory()
+Returns memory stats in MB
+"#
+  }
+  @@assert(notification_with_factual_context, {{
+    this.intent == "send_notification" and
+    "likely" not in this.context and
+    "probably" not in this.context and
+    "might" not in this.context
+  }})
 }

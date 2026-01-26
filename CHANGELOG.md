@@ -49,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   {Beamlens, skills: [Beamlens.Skill.Beam]}
   ```
 - **Breaking:** `Operator.run/2` and `Coordinator.run/2` raise `ArgumentError` if not configured in supervision tree
+- **Breaking:** `Notification.summary` field renamed to `observation`
 
 ### Removed
 
@@ -57,6 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Anomaly detector no longer crashes when skill snapshot exits unexpectedly
 - Exception skill snapshot data now serializes correctly to JSON
 
 ## [0.2.0] - 2026-01-14

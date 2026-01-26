@@ -31,7 +31,14 @@ defmodule Beamlens.Coordinator do
 
   use GenServer
 
-  alias Beamlens.Coordinator.{Insight, NotificationEntry, RunningOperator, Tools}
+  alias Beamlens.Coordinator.{
+    Insight,
+    NotificationEntry,
+    NotificationView,
+    OperatorStatusView,
+    RunningOperator,
+    Tools
+  }
 
   alias Beamlens.Coordinator.Tools.{
     Done,
@@ -459,16 +466,8 @@ defmodule Beamlens.Coordinator do
     notifications = filter_notifications(state.notifications, status)
 
     result =
-      Enum.map(notifications, fn {id, %{notification: notification, status: s}} ->
-        %{
-          id: id,
-          status: s,
-          operator: notification.operator,
-          anomaly_type: notification.anomaly_type,
-          severity: notification.severity,
-          summary: notification.summary,
-          detected_at: notification.detected_at
-        }
+      Enum.map(notifications, fn {id, entry} ->
+        NotificationView.from_entry(id, entry)
       end)
 
     emit_telemetry(:get_notifications, state, %{trace_id: trace_id, count: length(result)})
@@ -520,6 +519,8 @@ defmodule Beamlens.Coordinator do
         notification_ids: tool.notification_ids,
         correlation_type: tool.correlation_type,
         summary: tool.summary,
+        matched_observations: tool.matched_observations,
+        hypothesis_grounded: tool.hypothesis_grounded,
         root_cause_hypothesis: tool.root_cause_hypothesis,
         confidence: tool.confidence
       })
@@ -678,17 +679,9 @@ defmodule Beamlens.Coordinator do
       Enum.map(state.running_operators, fn {pid, %{skill: skill, started_at: started_at}} ->
         if Process.alive?(pid) do
           status = Operator.status(pid)
-
-          %{
-            skill: skill,
-            alive: true,
-            state: status.state,
-            iteration: status.iteration,
-            running: status.running,
-            started_at: started_at
-          }
+          OperatorStatusView.alive(skill, status, started_at)
         else
-          %{skill: skill, alive: false}
+          OperatorStatusView.dead(skill)
         end
       end)
 
