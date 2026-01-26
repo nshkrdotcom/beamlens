@@ -87,7 +87,7 @@ defmodule Beamlens.Supervisor do
 
   @impl true
   def init(opts) do
-    skills = Keyword.get(opts, :skills, Beamlens.Operator.Supervisor.builtin_skills())
+    skills = opts |> Keyword.get(:skills) |> resolve_skills()
     client_registry = Keyword.get(opts, :client_registry)
 
     {skill_modules, skill_configs} = parse_skills(skills)
@@ -122,6 +122,10 @@ defmodule Beamlens.Supervisor do
     end)
     |> then(fn {modules, configs} -> {Enum.reverse(modules), configs} end)
   end
+
+  defp resolve_skills(nil), do: Beamlens.Operator.Supervisor.builtin_skills()
+  defp resolve_skills([]), do: Beamlens.Operator.Supervisor.builtin_skills()
+  defp resolve_skills(skills), do: skills
 
   defp coordinator_child(client_registry) do
     opts = [name: Coordinator]
